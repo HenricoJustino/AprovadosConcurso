@@ -3,8 +3,9 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { IncomingMessage, ServerResponse } from 'node:http';
 import { Duplex } from 'node:stream';
-import { app } from '../server/index.js';
 import { questions } from '../server/content.js';
+process.env.APP_MODE = 'demo';
+const { app } = await import('../server/index.js');
 // Requisições HTTP em memória: exercita middleware/rotas reais, sem abrir portas.
 function request(url, options = {}) {
   return new Promise((resolve, reject) => {

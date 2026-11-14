@@ -1,10 +1,11 @@
 import { createClient } from '@supabase/supabase-js';
+import { browserAuthOptions } from '../shared/auth.js';
 export let supabase = null;
 export async function configure() {
   const response = await fetch('/api/config');
   if (!response.ok) throw new Error('Não foi possível conectar à API. Inicie npm run dev.');
   const config = await response.json();
-  if (config.mode === 'supabase') supabase = createClient(config.supabaseUrl, config.supabaseAnonKey);
+  if (config.mode === 'supabase') supabase = createClient(config.supabaseUrl, config.supabaseAnonKey, { auth: browserAuthOptions });
   return config;
 }
 export async function api(path, options = {}) {

@@ -2,6 +2,10 @@
 
 Sistema local em **Vue 3 + Vite**, **Node.js + Express** e **Supabase (PostgreSQL + Auth + RLS)**. Inicialmente apenas Vunesp. Bancas, matérias e assuntos têm identificadores próprios para permitir expansão.
 
+**Login Google:** botão de acesso, sessão persistente, dashboard/histórico separados por usuário e meta diária pessoal. Consulte [configuração do Google e Supabase](docs/login-google.md). Execute também a migração `002_student_settings.sql`.
+
+**Verificar a configuração preenchida no `.env`:** `npm.cmd run check:supabase`. A API aceita chave pública nova `SUPABASE_PUBLISHABLE_KEY` ou a chave anon legada, inclusive pelos nomes equivalentes `VITE_`. Valores reais não devem ser colocados no `.env.example` nem enviados ao GitHub.
+
 ## Iniciar no Windows
 
 Requisito: Node.js 22.18 ou superior. No terminal do VS Code, dentro desta pasta:
@@ -34,7 +38,7 @@ Abra http://127.0.0.1:3001. O servidor escuta somente no loopback por padrão. P
 5. **Caderno de erros**: última tentativa incorreta; um acerto na revisão tira a questão do caderno.
 6. **Dashboard**: tentativas, acertos e erros separados por básico/oficial, taxa por matéria, tempo ativo até confirmar resposta, atividade em 7 dias e meta diária (Brasília).
 
-O dashboard considera todas as tentativas, incluindo revisões. A liberação da etapa oficial usa questões distintas. O tempo é declarado pelo navegador e não é uma métrica antifraude. A meta diária é uma preferência deste navegador.
+O dashboard considera todas as tentativas, incluindo revisões. A liberação da etapa oficial usa questões distintas. O tempo é declarado pelo navegador e não é uma métrica antifraude. No modo demo, a meta diária fica neste navegador; no modo Supabase, pertence à conta e é sincronizada no banco.
 
 ## Acervo inicial: 10.053 questões básicas
 
@@ -54,13 +58,13 @@ Os testes recalculam independentemente as 10 mil respostas a partir dos dados do
 ## Conectar ao Supabase
 
 1. Crie seu projeto Supabase.
-2. Execute `supabase/migrations/001_initial.sql` no SQL Editor **uma vez**, em banco novo. O script usa transação e cria tabelas, índices, políticas e funções.
-3. Em `.env`, configure `SUPABASE_URL`, `SUPABASE_ANON_KEY` (chave pública legada `anon`) e `SUPABASE_SERVICE_ROLE_KEY`.
+2. Execute `supabase/migrations/001_initial.sql` no SQL Editor **uma vez**, em banco novo. Depois execute `002_student_settings.sql`. Os scripts criam tabelas, índices, políticas e funções.
+3. Em `.env`, configure `SUPABASE_URL` e `SUPABASE_PUBLISHABLE_KEY` ou `SUPABASE_ANON_KEY`. Para popular/importar questões, configure também `SUPABASE_SERVICE_ROLE_KEY`.
 4. Execute `npm.cmd run seed`. As 10.053 questões, matérias e conceitos serão enviados em lotes de 200. O seed pode ser repetido: IDs são determinísticos e respostas existentes não são apagadas. Cada lote é atômico, não o seed inteiro; após falha, execute novamente.
 5. Altere `APP_MODE=supabase` e reinicie `npm.cmd run dev`.
 6. Cadastre uma conta pela interface. Se a confirmação por e-mail estiver ativa, confirme antes de entrar. Configure as URLs de redirecionamento e os e-mails no painel do Supabase conforme o ambiente.
 
-As variáveis `VITE_SUPABASE_URL` e `VITE_SUPABASE_ANON_KEY` são opcionais e reservadas: esta versão recebe as configurações públicas da API em `/api/config`. A chave `service_role` é utilizada **apenas pelos scripts administrativos**, nunca pelo servidor de respostas nem pelo frontend. Não compartilhe o `.env` nem o adicione ao Git.
+As variáveis `VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY` e `VITE_SUPABASE_ANON_KEY` são alternativas públicas aceitas pelo servidor. O navegador recebe as configurações públicas da API em `/api/config`. A chave `service_role` é utilizada **apenas pelos scripts administrativos**, nunca pelo servidor de respostas nem pelo frontend. Não compartilhe o `.env` nem o adicione ao Git.
 
 ### Segurança do banco
 
@@ -120,4 +124,4 @@ Sem dependências instaladas, os testes do conteúdo e do progresso ainda funcio
 node --test tests/content.test.js tests/progress.test.js
 ```
 
-Os testes da API usam o modo demo. Rode com `APP_MODE=demo` se o `.env` estiver configurado para Supabase. O banco requer verificação em projeto Supabase real, conforme [docs/verificacao.md](docs/verificacao.md). Não considere a migração validada em produção apenas porque os testes locais passaram.
+Os testes de prática usam o modo demo automaticamente; não usam o banco real do `.env`. O banco requer verificação em projeto Supabase real, conforme [docs/verificacao.md](docs/verificacao.md) e [docs/login-google.md](docs/login-google.md). Não considere a migração validada em produção apenas porque os testes locais passaram.

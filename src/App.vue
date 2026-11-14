@@ -1,8 +1,10 @@
 <script setup>
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, onMounted, onUnmounted } from 'vue';
 import { ArrowUpRight, ArrowRight, ArrowLeft, LayoutDashboard, BookOpen, ListChecks, RotateCcw, Library, Settings2, Bell, ChevronDown, ChevronRight, Check, X, LockKeyhole, Play, Target, Timer, Flame, GraduationCap, Calculator, Brain, Monitor, Search, Menu, LogOut, CircleHelp, CheckCircle2, AlertCircle, ExternalLink, TrendingUp } from 'lucide-vue-next';
 import { api, configure, supabase } from './api.js';
 import { summarize } from '../shared/progress.js';
+import { signInWithGoogle, callbackError, createSessionScope } from '../shared/auth.js';
+import GoogleSignInButton from './components/GoogleSignInButton.vue';
 
 const route = ref('dashboard'), mobileMenu = ref(false), catalog = ref(null), config = ref(null), inventory = ref(null);
 const error = ref(''), notice = ref(''), booting = ref(true), user = ref(null), attempts = ref([]);
@@ -10,11 +12,15 @@ const selectedSubject = ref('portugues'), selectedTopic = ref('regencia'), lesso
 const selectedKind = ref('basic'), query = ref(''), questionItems = ref([]), questionTotal = ref(0), offset = ref(0), questionIndex = ref(0);
 const selectedOption = ref(null), result = ref(null), busy = ref(false), loadingQuestions = ref(false), startedAt = ref(Date.now()), requestId = ref(crypto.randomUUID()), sessionAnswers = ref(0), reviewSession = ref(false);
 const authEmail = ref(''), authPassword = ref(''), authSignup = ref(false), authBusy = ref(false);
+const googleBusy = ref(false), savingGoal = ref(false), accountLoading = ref(false);
+const sessionScope = createSessionScope();
+let authSubscription;
 let storedGoal = 20;
 try { storedGoal = Number(localStorage.getItem('aprovados-goal') || 20); } catch { /* Armazenamento pode estar indisponível no navegador. */ }
 const dailyGoal = ref(storedGoal >= 5 && storedGoal <= 200 ? storedGoal : 20);
 const names = { dashboard: 'Visão geral', boards: 'Bancas e matérias', questions: 'Banco de questões', review: 'Caderno de erros', library: 'Acervo e fontes', settings: 'Minha preparação', study: 'Sua sessão de estudo' };
 const iconMap = { book: BookOpen, calculator: Calculator, brain: Brain, monitor: Monitor };
+names.login = 'Entrar na minha conta';
 const stats = computed(() => summarize(attempts.value));
 const subjects = computed(() => catalog.value?.subjects || []);
 const topics = computed(() => catalog.value?.topics || []);
@@ -24,7 +30,10 @@ const topic = computed(() => topics.value.find(t => t.id === selectedTopic.value
 const currentQuestion = computed(() => questionItems.value[questionIndex.value]);
 const topicState = id => stats.value.topicProgress[id] || { answered: 0, correct: 0, rate: 0, unlocked: false };
 const unlocked = computed(() => topicState(selectedTopic.value).unlocked);
-const displayName = computed(() => user.value?.email?.split('@')[0] || 'estudante');
+const displayName = computed(() => {
+  const name = user.value?.user_metadata?.full_name || user.value?.user_metadata?.name;
+  return typeof name === 'string' && name.trim() ? name.trim().split(/\s+/)[0] : user.value?.email?.split('@')[0] || 'estudante';
+});
 const latestAttempts = computed(() => {
   const latest = new Map();
   for (const a of [...attempts.value].sort((a, b) => new Date(a.created_at) - new Date(b.created_at))) latest.set(a.question_id, a);
@@ -44,7 +53,10 @@ function subjectStats(id) {
   return { total: a.length, rate: a.length ? Math.round(a.filter(a => a.correct).length / a.length * 100) : 0, mastered: topics.value.filter(t => t.subject_id === id && topicState(t.id).unlocked).length };
 }
 async function refreshData() {
-  inventory.value = await api('/inventory');
+  const scope = sessionScope.capture();
+  const inventoryData = await api('/inventory');
+  if (!sessionScope.isCurrent(scope)) return;
+  inventory.value = inventoryData;
   if (config.value.mode === 'demo') {
     try {
       const saved = JSON.parse(localStorage.getItem('aprovados-demo-attempts') || '[]');
@@ -52,31 +64,65 @@ async function refreshData() {
       attempts.value = saved.filter(a => a && typeof a.correct === 'boolean' && typeof a.question_id === 'string' && ['basic','official'].includes(a.kind) && !Number.isNaN(Date.parse(a.created_at)));
     } catch { attempts.value = []; error.value = 'O histórico local não pôde ser lido. Você pode continuar estudando.'; }
   } else {
+    const preferences = await api('/preferences');
+    if (!sessionScope.isCurrent(scope)) return;
+    dailyGoal.value = preferences.dailyGoal;
     const all = [];
     let more = true, page = 0;
-    while (more) { const data = await api(`/attempts?page=${page++}`); all.push(...data.attempts); more = data.hasMore; }
+    while (more) {
+      const data = await api(`/attempts?page=${page++}`);
+      if (!sessionScope.isCurrent(scope)) return;
+      all.push(...data.attempts); more = data.hasMore;
+    }
     attempts.value = all;
   }
 }
 onMounted(async () => {
   try {
+    const loginError = callbackError(window.location.href);
     config.value = await configure(); catalog.value = await api('/catalog');
     if (supabase) {
-      const { data } = await supabase.auth.getSession(); user.value = data.session?.user || null;
-      supabase.auth.onAuthStateChange((event, session) => {
+      const { data, error: sessionError } = await supabase.auth.getSession();
+      if (sessionError) throw new Error('Não foi possível restaurar sua sessão. Entre novamente.');
+      user.value = data.session?.user || null;
+      const { data: listener } = supabase.auth.onAuthStateChange((event, session) => {
         const previousId = user.value?.id;
         user.value = session?.user || null;
         if (previousId !== user.value?.id) {
-          attempts.value = []; questionItems.value = []; result.value = null; inventory.value = null; navigate('dashboard');
-          if (user.value) setTimeout(() => refreshData().catch(e => error.value = e.message), 0);
+          sessionScope.invalidate();
+          attempts.value = []; questionItems.value = []; result.value = null; inventory.value = null;
+          selectedOption.value = null; sessionAnswers.value = 0; authPassword.value = ''; authEmail.value = '';
+          dailyGoal.value = 20; lessonRead.value = false; savingGoal.value = false;
+          busy.value = false; loadingQuestions.value = false; authBusy.value = false; googleBusy.value = false;
+          accountLoading.value = !!user.value; navigate('dashboard');
+          const scope = sessionScope.capture();
+          if (user.value) setTimeout(async () => {
+            if (!sessionScope.isCurrent(scope)) return;
+            try { await refreshData(); } catch (e) { if (sessionScope.isCurrent(scope)) error.value = e.message; }
+            finally { if (sessionScope.isCurrent(scope)) accountLoading.value = false; }
+          }, 0);
         }
       });
+      authSubscription = listener.subscription;
+      if (loginError) error.value = loginError;
+      if (window.location.pathname === '/auth/callback') {
+        if (!user.value && !loginError) error.value = 'Não foi possível concluir o login. Tente entrar novamente.';
+        window.history.replaceState({}, '', '/');
+      }
     }
     if (config.value.mode === 'demo' || user.value) await refreshData();
   } catch (e) { error.value = e.message; }
   finally { booting.value = false; }
 });
+onUnmounted(() => { authSubscription?.unsubscribe(); sessionScope.invalidate(); });
+async function googleLogin() {
+  if (authBusy.value || googleBusy.value) return;
+  googleBusy.value = true; error.value = ''; notice.value = '';
+  try { await signInWithGoogle(supabase?.auth, window.location.origin); }
+  catch (e) { error.value = e.message; googleBusy.value = false; }
+}
 async function authenticate() {
+  if (authBusy.value || googleBusy.value || !supabase) return;
   authBusy.value = true; error.value = ''; notice.value = '';
   try {
     const response = authSignup.value
@@ -87,7 +133,7 @@ async function authenticate() {
     authPassword.value = '';
   } catch (e) { error.value = e.message; } finally { authBusy.value = false; }
 }
-async function logout() { const { error: e } = await supabase.auth.signOut(); if (e) error.value = e.message; }
+async function logout() { const { error: e } = await supabase.auth.signOut({ scope: 'local' }); if (e) error.value = e.message; }
 function openTopic(id) {
   const t = topics.value.find(t => t.id === id);
   selectedSubject.value = t.subject_id; selectedTopic.value = id; selectedKind.value = 'basic'; lessonOpen.value = true; lessonRead.value = false; navigate('boards');
@@ -96,18 +142,22 @@ function selectSubject(id) { selectedSubject.value = id; selectedTopic.value = t
 function resetQuestion() { selectedOption.value = null; result.value = null; startedAt.value = Date.now(); requestId.value = crypto.randomUUID(); }
 async function startPractice(kind = 'basic') {
   if (kind === 'official' && !unlocked.value) { error.value = 'Pratique 5 questões básicas distintas deste assunto e alcance pelo menos 70% de acerto.'; return; }
+  const scope = sessionScope.capture();
   loadingQuestions.value = true; error.value = ''; reviewSession.value = false;
   try {
     const data = await api(`/questions?topic=${selectedTopic.value}&kind=${kind}&offset=0`);
+    if (!sessionScope.isCurrent(scope)) return;
     questionItems.value = data.questions; questionTotal.value = data.total; questionIndex.value = 0; offset.value = 0;
     selectedKind.value = kind; sessionAnswers.value = 0; resetQuestion(); navigate('study');
-  } catch (e) { error.value = e.message; } finally { loadingQuestions.value = false; }
+  } catch (e) { if (sessionScope.isCurrent(scope)) error.value = e.message; } finally { if (sessionScope.isCurrent(scope)) loadingQuestions.value = false; }
 }
 async function answer() {
   if (selectedOption.value === null || busy.value || result.value) return;
+  const scope = sessionScope.capture();
   busy.value = true; error.value = '';
   try {
     const data = await api('/answers', { method: 'POST', body: JSON.stringify({ questionId: currentQuestion.value.id, selectedIndex: selectedOption.value, elapsedSeconds: Math.min(3600, Math.max(0, Math.floor((Date.now() - startedAt.value) / 1000))), requestId: requestId.value }) });
+    if (!sessionScope.isCurrent(scope)) return;
     result.value = data;
     if (!attempts.value.some(a => a.request_id === data.request_id)) attempts.value.push(data);
     sessionAnswers.value++;
@@ -115,32 +165,43 @@ async function answer() {
       try { localStorage.setItem('aprovados-demo-attempts', JSON.stringify(attempts.value)); }
       catch { error.value = 'A resposta foi corrigida, mas o navegador não conseguiu salvar o histórico. Exporte seus dados em Minha preparação.'; }
     }
-  } catch (e) { error.value = e.message; } finally { busy.value = false; }
+  } catch (e) { if (sessionScope.isCurrent(scope)) error.value = e.message; } finally { if (sessionScope.isCurrent(scope)) busy.value = false; }
 }
 async function nextQuestion() {
   if (questionIndex.value < questionItems.value.length - 1) { questionIndex.value++; resetQuestion(); return; }
   if (!reviewSession.value && offset.value + questionItems.value.length < questionTotal.value) {
+    const scope = sessionScope.capture();
     loadingQuestions.value = true;
     try {
       const nextOffset = offset.value + questionItems.value.length;
       const data = await api(`/questions?topic=${selectedTopic.value}&kind=${selectedKind.value}&offset=${nextOffset}`);
+      if (!sessionScope.isCurrent(scope)) return;
       questionItems.value = data.questions; offset.value = nextOffset; questionIndex.value = 0; resetQuestion();
-    } catch (e) { error.value = e.message; } finally { loadingQuestions.value = false; }
+    } catch (e) { if (sessionScope.isCurrent(scope)) error.value = e.message; } finally { if (sessionScope.isCurrent(scope)) loadingQuestions.value = false; }
   } else { navigate('dashboard'); notice.value = `Sessão concluída. Você respondeu ${sessionAnswers.value} ${sessionAnswers.value === 1 ? 'questão' : 'questões'}. Continue assim!`; }
 }
 async function reviewAttempt(a) {
+  const scope = sessionScope.capture();
   loadingQuestions.value = true; error.value = '';
   try {
     const data = await api(`/questions/${a.question_id}`);
+    if (!sessionScope.isCurrent(scope)) return;
     selectedTopic.value = a.topic_id; selectedSubject.value = a.subject_id; selectedKind.value = a.kind;
     questionItems.value = [data]; questionTotal.value = 1; questionIndex.value = 0; offset.value = 0; sessionAnswers.value = 0; reviewSession.value = true;
     resetQuestion(); navigate('study');
-  } catch (e) { error.value = e.message; } finally { loadingQuestions.value = false; }
+  } catch (e) { if (sessionScope.isCurrent(scope)) error.value = e.message; } finally { if (sessionScope.isCurrent(scope)) loadingQuestions.value = false; }
 }
-function saveGoal() {
+async function saveGoal() {
+  if (savingGoal.value) return;
+  const scope = sessionScope.capture();
   dailyGoal.value = Math.min(200, Math.max(5, Number(dailyGoal.value) || 20));
-  try { localStorage.setItem('aprovados-goal', String(dailyGoal.value)); notice.value = 'Meta diária atualizada.'; }
-  catch { error.value = 'A meta foi alterada nesta sessão, mas o navegador não permitiu salvá-la.'; }
+  savingGoal.value = true;
+  try {
+    if (config.value.mode === 'demo') localStorage.setItem('aprovados-goal', String(dailyGoal.value));
+    else await api('/preferences', { method: 'PUT', body: JSON.stringify({ dailyGoal: dailyGoal.value }) });
+    if (sessionScope.isCurrent(scope)) notice.value = 'Meta diária atualizada.';
+  } catch { if (sessionScope.isCurrent(scope)) error.value = 'Não foi possível salvar sua meta. Tente novamente.'; }
+  finally { if (sessionScope.isCurrent(scope)) savingGoal.value = false; }
 }
 function exportHistory() {
   const blob = new Blob([JSON.stringify({ exported_at: new Date().toISOString(), attempts: attempts.value }, null, 2)], { type: 'application/json' });
@@ -170,10 +231,32 @@ const formatDate = s => new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month
       <main id="main-content">
         <div v-if="error" class="alert error" role="alert"><AlertCircle :size="20"/><span>{{ error }}</span><button class="icon-button" aria-label="Fechar erro" @click="error = ''"><X :size="16"/></button></div>
         <div v-if="notice" class="alert success" role="status"><CheckCircle2 :size="20"/><span>{{ notice }}</span><button class="icon-button" aria-label="Fechar aviso" @click="notice = ''"><X :size="16"/></button></div>
-        <div v-if="booting" class="loading-state"><span class="spinner"></span>Preparando seu espaço de estudo…</div>
-        <div v-else-if="config?.mode === 'supabase' && !user" class="auth-wrap"><div class="eyebrow">SEU PRÓXIMO CAPÍTULO</div><h1>Todo grande resultado<br>começa com um passo.</h1><p>Entre para salvar seu progresso e estudar de onde quiser.</p><form class="panel auth-form" @submit.prevent="authenticate"><h2>{{ authSignup ? 'Crie sua conta' : 'Bem-vindo de volta' }}</h2><label>E-mail<input v-model="authEmail" type="email" required autocomplete="email" placeholder="voce@exemplo.com"></label><label>Senha<input v-model="authPassword" type="password" required minlength="8" :autocomplete="authSignup ? 'new-password' : 'current-password'" placeholder="Pelo menos 8 caracteres"></label><button class="button primary" :disabled="authBusy">{{ authBusy ? 'Aguarde…' : authSignup ? 'Criar conta' : 'Entrar no meu espaço' }}<ArrowRight :size="17"/></button><button type="button" class="text-button" @click="authSignup = !authSignup">{{ authSignup ? 'Já tenho uma conta' : 'Quero criar minha conta' }}</button></form></div>
+        <div v-if="booting || accountLoading" class="loading-state"><span class="spinner"></span>{{ accountLoading ? 'Carregando seu progresso…' : 'Preparando seu espaço de estudo…' }}</div>
+        <div v-else-if="config?.mode === 'supabase' && !user || route === 'login'" class="auth-wrap">
+          <div class="eyebrow">SEU PRÓXIMO CAPÍTULO</div><h1>Seu estudo.<br>Sua conta. Sua evolução.</h1>
+          <p>Entre com sua conta Google para ter seu próprio dashboard, histórico de questões e caderno de erros.</p>
+          <div class="panel auth-form">
+            <h2>{{ authSignup ? 'Crie sua conta' : 'Entre no seu espaço' }}</h2>
+            <GoogleSignInButton :busy="googleBusy" :disabled="!supabase || authBusy" @click="googleLogin" />
+            <p class="auth-caption">Cada conta tem seu próprio progresso. Você não precisa criar uma senha para entrar com Google.</p>
+            <template v-if="supabase">
+              <div class="auth-divider"><span>ou use seu e-mail</span></div>
+              <form class="email-auth-form" @submit.prevent="authenticate">
+                <label>E-mail<input v-model="authEmail" type="email" required autocomplete="email" placeholder="voce@exemplo.com" :disabled="authBusy || googleBusy"></label>
+                <label>Senha<input v-model="authPassword" type="password" required minlength="8" :autocomplete="authSignup ? 'new-password' : 'current-password'" placeholder="Pelo menos 8 caracteres" :disabled="authBusy || googleBusy"></label>
+                <button class="button primary" :disabled="authBusy || googleBusy">{{ authBusy ? 'Aguarde…' : authSignup ? 'Criar conta' : 'Entrar com e-mail' }}<ArrowRight :size="17"/></button>
+                <button type="button" class="text-button" :disabled="authBusy || googleBusy" @click="authSignup = !authSignup">{{ authSignup ? 'Já tenho uma conta' : 'Quero criar minha conta' }}</button>
+              </form>
+            </template>
+            <template v-else>
+              <div class="auth-demo-note"><CircleHelp :size="18"/><p>O login ainda não está disponível neste ambiente. A demonstração salva o histórico somente neste navegador.</p></div>
+              <button class="button secondary" @click="navigate('dashboard')">Continuar na demonstração<ArrowRight :size="17"/></button>
+            </template>
+          </div>
+        </div>
 
         <template v-else-if="catalog">
+          <div v-if="config.mode === 'demo'" class="demo-account-banner"><div><LockKeyhole :size="18"/><span>Você está na demonstração local. Entre para ter seu espaço pessoal.</span></div><button class="text-button" @click="navigate('login')">Conhecer o login<ArrowRight :size="15"/></button></div>
           <template v-if="route === 'dashboard'">
             <div class="page-heading"><div><div class="eyebrow">CONSTÂNCIA TRANSFORMA</div><h1>Seu futuro começa no que você faz hoje<span class="green-dot">.</span></h1><p>Bom estudo, {{ displayName }}. Vamos dar mais um passo na sua aprovação?</p></div><span class="date-pill"><span></span>{{ new Intl.DateTimeFormat('pt-BR', { day: 'numeric', month: 'long' }).format(new Date()) }}</span></div>
             <section class="hero"><div class="hero-copy"><span class="hero-tag"><span></span>DO BÁSICO À APROVAÇÃO</span><h2>Entender primeiro.<br>Acertar como consequência.</h2><p>Construa uma base sólida antes de encarar a prova.<br class="desktop-br"> Sua preparação tem um caminho — e começa aqui.</p><button class="button light" @click="openTopic(recommendation.id)">{{ stats.total ? 'Continuar minha jornada' : 'Começar minha jornada' }}<ArrowUpRight :size="19"/></button></div><div class="hero-art" aria-hidden="true"><div class="orbit orbit-one"></div><div class="orbit orbit-two"></div><div class="art-star star-one">✧</div><div class="art-star star-two">✦</div><div class="paper paper-back"></div><div class="paper paper-front"><span class="paper-label">UM PASSO A MAIS</span><div class="paper-mark"><Check :size="30"/></div><span class="paper-title">Você é capaz.</span><span class="paper-line"></span><span class="paper-line short"></span><div class="paper-progress"><span></span></div><span class="paper-caption">Conhecimento que fica.</span></div><div class="floating-badge"><TrendingUp :size="18"/>Evolução, todos os dias</div></div></section>

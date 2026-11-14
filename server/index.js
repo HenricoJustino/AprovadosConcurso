@@ -9,24 +9,26 @@ import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
 import { boards, subjects, topics, officialSources } from '../shared/catalog.js';
 import { questions, questionMap, publicQuestion } from './content.js';
+import { getDatabaseConfig, validateDatabaseConfig } from './config.js';
 
 export const app = express();
 export const mode = process.env.APP_MODE || 'demo';
 if (!['demo', 'supabase'].includes(mode)) throw new Error('APP_MODE deve ser demo ou supabase.');
-if (mode === 'supabase' && (!process.env.SUPABASE_URL || !process.env.SUPABASE_ANON_KEY)) throw new Error('Configure SUPABASE_URL e SUPABASE_ANON_KEY.');
+const databaseConfig = getDatabaseConfig();
+if (mode === 'supabase') validateDatabaseConfig(databaseConfig);
 app.disable('x-powered-by');
 app.use(helmet({ contentSecurityPolicy: { directives: { defaultSrc: ["'self'"], scriptSrc: ["'self'"], styleSrc: ["'self'", "'unsafe-inline'"], connectSrc: ["'self'", 'https://*.supabase.co'], imgSrc: ["'self'", 'data:'], fontSrc: ["'self'"] } } }));
 app.use(express.json({ limit: '5mb' }));
 app.use('/api', rateLimit({ windowMs: 60_000, limit: 180, standardHeaders: 'draft-8', legacyHeaders: false, message: { error: 'Muitas requisições. Aguarde um minuto.' } }));
 app.get('/api/health', (req, res) => res.json({ ok: true, mode }));
-app.get('/api/config', (req, res) => res.json({ mode, supabaseUrl: mode === 'supabase' ? process.env.SUPABASE_URL : null, supabaseAnonKey: mode === 'supabase' ? process.env.SUPABASE_ANON_KEY : null }));
+app.get('/api/config', (req, res) => res.json({ mode, supabaseUrl: mode === 'supabase' ? databaseConfig.url : null, supabaseAnonKey: mode === 'supabase' ? databaseConfig.publicKey : null }));
 app.get('/api/catalog', (req, res) => res.json({ boards, subjects, topics, officialSources }));
 app.use('/api', async (req, res, next) => {
   if (mode === 'demo') return next();
   const token = req.headers.authorization?.match(/^Bearer (.+)$/)?.[1];
   if (!token) return res.status(401).json({ error: 'Entre na sua conta para estudar.' });
   try {
-    const db = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY, { global: { headers: { Authorization: `Bearer ${token}` } }, auth: { persistSession: false, autoRefreshToken: false } });
+    const db = createClient(databaseConfig.url, databaseConfig.publicKey, { global: { headers: { Authorization: `Bearer ${token}` } }, auth: { persistSession: false, autoRefreshToken: false } });
     const { data, error } = await db.auth.getUser(token);
     if (error || !data.user) return res.status(401).json({ error: 'Sua sessão expirou. Entre novamente.' });
     req.db = db; req.user = data.user;
@@ -39,6 +41,24 @@ app.get('/api/inventory', async (req, res, next) => {
     const { data, error } = await req.db.rpc('question_inventory');
     if (error) throw error;
     res.json(data);
+  } catch (error) { next(error); }
+});
+app.get('/api/preferences', async (req, res, next) => {
+  try {
+    if (mode === 'demo') return res.json({ dailyGoal: 20, localOnly: true });
+    const { data, error } = await req.db.from('student_settings').select('daily_goal').eq('user_id', req.user.id).maybeSingle();
+    if (error) throw error;
+    res.json({ dailyGoal: data?.daily_goal ?? 20 });
+  } catch (error) { next(error); }
+});
+app.put('/api/preferences', async (req, res, next) => {
+  try {
+    const { dailyGoal } = z.object({ dailyGoal: z.number().int().min(5).max(200) }).strict().parse(req.body);
+    if (mode === 'demo') return res.json({ dailyGoal, localOnly: true });
+    // A identidade sempre vem do JWT validado; nunca do corpo enviado pelo aluno.
+    const { data, error } = await req.db.from('student_settings').upsert({ user_id: req.user.id, daily_goal: dailyGoal }).select('daily_goal').single();
+    if (error) throw error;
+    res.json({ dailyGoal: data.daily_goal });
   } catch (error) { next(error); }
 });
 const filterSchema = z.object({ topic: z.string().optional(), subject: z.string().optional(), kind: z.enum(['basic', 'official']).default('basic'), offset: z.coerce.number().int().min(0).max(1000000).default(0) });
@@ -92,7 +112,7 @@ app.get('/api/attempts', async (req, res, next) => {
     if (mode === 'demo') return res.json({ attempts: [], message: 'O histórico da demonstração fica neste navegador.' });
     // Paginação explícita evita o limite padrão de 1.000 linhas do PostgREST.
     const page = z.coerce.number().int().min(0).max(100000).parse(req.query.page || 0);
-    const { data, error } = await req.db.from('attempts').select('*').order('created_at').order('id').range(page * 1000, page * 1000 + 999);
+    const { data, error } = await req.db.from('attempts').select('*').eq('user_id', req.user.id).order('created_at').order('id').range(page * 1000, page * 1000 + 999);
     if (error) throw error;
     res.json({ attempts: data, hasMore: data.length === 1000 });
   } catch (error) { next(error); }
