@@ -1,6 +1,7 @@
-export function publicBuildConfig(env = {}) {
-  const url = env.VITE_SUPABASE_URL;
-  const key = env.VITE_SUPABASE_PUBLISHABLE_KEY || env.VITE_SUPABASE_ANON_KEY;
+export function publicBuildConfig(env = {}, project = null) {
+  const supplied = ['VITE_SUPABASE_URL','VITE_SUPABASE_PUBLISHABLE_KEY','VITE_SUPABASE_ANON_KEY'].some(key => Object.hasOwn(env, key));
+  const url = supplied ? env.VITE_SUPABASE_URL : project?.url;
+  const key = supplied ? env.VITE_SUPABASE_PUBLISHABLE_KEY || env.VITE_SUPABASE_ANON_KEY : project?.publicKey;
   if (!url || !key) return null;
   const parsed = new URL(url);
   if (parsed.protocol !== 'https:' || !parsed.hostname.endsWith('.supabase.co')) throw new Error('A configuração pública do Supabase é inválida.');

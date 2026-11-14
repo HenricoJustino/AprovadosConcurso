@@ -1,8 +1,13 @@
+import publicProject from '../shared/public-project.json' with { type: 'json' };
+
 export function getDatabaseConfig(env = process.env) {
-  return {
+  const config = {
     url: env.SUPABASE_URL || env.VITE_SUPABASE_URL || '',
     publicKey: env.SUPABASE_PUBLISHABLE_KEY || env.SUPABASE_ANON_KEY || env.VITE_SUPABASE_PUBLISHABLE_KEY || env.VITE_SUPABASE_ANON_KEY || ''
   };
+  const supplied = ['SUPABASE_URL','VITE_SUPABASE_URL','SUPABASE_PUBLISHABLE_KEY','SUPABASE_ANON_KEY','VITE_SUPABASE_PUBLISHABLE_KEY','VITE_SUPABASE_ANON_KEY'].some(key => Object.hasOwn(env, key));
+  // Configuração pública do projeto publicado; variáveis explícitas têm prioridade.
+  return env.VERCEL && !supplied ? { ...publicProject } : config;
 }
 export function validateDatabaseConfig(config) {
   if (!config.url || !config.publicKey) throw new Error('Configure a URL e a chave pública do Supabase no .env.');

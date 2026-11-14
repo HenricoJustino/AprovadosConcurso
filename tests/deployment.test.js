@@ -3,6 +3,13 @@ import assert from 'node:assert/strict';
 import { request } from './helpers/http.js';
 process.env.APP_MODE = 'demo';
 process.env.VERCEL = '1';
+// Sem configuração explícita válida, nenhum fallback parcial libera a API.
+process.env.SUPABASE_URL = '';
+process.env.SUPABASE_PUBLISHABLE_KEY = '';
+process.env.VITE_SUPABASE_URL = '';
+process.env.VITE_SUPABASE_PUBLISHABLE_KEY = '';
+process.env.SUPABASE_ANON_KEY = '';
+process.env.VITE_SUPABASE_ANON_KEY = '';
 const { default: handler } = await import('../api/index.js');
 test('entry point de produção atende API sem iniciar servidor fixo', async () => {
   const health = await request(handler, '/api/health');

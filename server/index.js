@@ -12,7 +12,7 @@ import { getDatabaseConfig, validateDatabaseConfig } from './config.js';
 export const app = express();
 const databaseConfig = getDatabaseConfig();
 // Falta de configuração nunca libera um modo público de estudos.
-export const mode = process.env.APP_MODE !== 'demo' && databaseConfig.url && databaseConfig.publicKey ? 'supabase' : 'locked';
+export const mode = (process.env.VERCEL || process.env.APP_MODE !== 'demo') && databaseConfig.url && databaseConfig.publicKey ? 'supabase' : 'locked';
 if (mode === 'supabase') validateDatabaseConfig(databaseConfig);
 if (process.env.VERCEL) app.set('trust proxy', 1);
 app.disable('x-powered-by');

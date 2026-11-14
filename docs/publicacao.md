@@ -9,6 +9,8 @@
 
 ## Variáveis da hospedagem
 
+A publicação Vercel já possui um vínculo público com o projeto Supabase em `shared/public-project.json`. Esse arquivo contém somente URL e chave `sb_publishable_`, apropriada para aplicações web; não contém senha, chave secreta ou `service_role`. O frontend e a API usam esse vínculo quando não há variáveis explícitas. O login e a validação do JWT continuam obrigatórios, com RLS no banco. Para outro ambiente/projeto, configure URL e chave juntas nas variáveis abaixo. Uma configuração explícita incompleta nunca é misturada com a chave do projeto padrão.
+
 Configure nos ambientes Production/Preview utilizados:
 
 ```dotenv

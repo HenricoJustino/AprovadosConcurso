@@ -1,9 +1,10 @@
 import { createClient } from '@supabase/supabase-js';
 import { browserAuthOptions } from '../shared/auth.js';
 import { publicBuildConfig, resolveAppConfig } from '../shared/bootstrap.js';
+import publicProject from '../shared/public-project.json';
 export let supabase = null;
 export async function configure() {
-  const config = await resolveAppConfig(publicBuildConfig(import.meta.env), () => fetch('/api/config', { signal: AbortSignal.timeout(8000) }));
+  const config = await resolveAppConfig(publicBuildConfig(import.meta.env, publicProject), () => fetch('/api/config', { signal: AbortSignal.timeout(8000) }));
   if (config.mode === 'supabase') supabase = createClient(config.supabaseUrl, config.supabaseAnonKey, { auth: browserAuthOptions });
   return config;
 }
