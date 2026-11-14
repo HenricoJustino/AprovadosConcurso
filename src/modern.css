@@ -1,0 +1,19 @@
+/* Superfícies discretas e espaçamento consistente em toda a área autenticada. */
+body{background:#f7f9f7;color:#263f31}
+.sidebar{background:#fff;border-right:1px solid #e6ece5}
+.main-shell{background:#f7f9f7;min-height:100dvh}
+.topbar{background:#ffffffed;border-bottom:1px solid #e8eee6}
+.panel,.metric-card,.subject-card{border-color:#e4ebe2;border-radius:13px;box-shadow:0 2px 6px #1e3d2503}
+.sidebar nav button{border-radius:9px}
+.sidebar nav button.active{background:#eaf3e9;color:#386e43}
+.sidebar-plan{border-radius:12px;background:#f6f9f4}
+.hero{border-radius:15px;box-shadow:none}
+.button{border-radius:8px}
+.button.primary{background:#285f40}
+.button.primary:hover:not(:disabled){background:#1e5034}
+.mini-avatar{border:0;cursor:pointer}
+.metric-card>strong{letter-spacing:-1px}
+.subject-card:hover{border-color:#c8d9c9;box-shadow:0 8px 22px #24432d07}
+.page-heading h1{font-weight:650}
+@media(min-width:1001px){.panel-heading h2,.section-row h2{font-size:16px}.metric-card>small{font-size:11px}.subject-card p{font-size:11px}.subject-footer{font-size:10px}.topbar{height:76px}}
+button:focus-visible,a:focus-visible{outline:2px solid #548e72;outline-offset:4px}

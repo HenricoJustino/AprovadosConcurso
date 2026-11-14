@@ -20,7 +20,7 @@ npm.cmd run dev
 
 Abra **http://127.0.0.1:5173**. A API fica em **http://127.0.0.1:3001**. `npm.cmd` evita o bloqueio do arquivo npm.ps1 no PowerShell. Se a porta já estiver ocupada, encerre a instância anterior ou ajuste a porta e o proxy em `vite.config.js`.
 
-O modo padrão é `demo`: funciona sem chaves, permite estudar, corrigir, revisar e ver o dashboard. O histórico fica no `localStorage` deste navegador. Não é um ambiente multiusuário autenticado. A conta Supabase é necessária para sincronizar entre dispositivos. O histórico local não migra automaticamente para contas.
+O login é obrigatório para acessar o sistema. Sem URL e chave pública do Supabase, a página de acesso permanece disponível e as APIs de estudo retornam 401. Não existe acesso de demonstração ou histórico de respostas em localStorage. Configure o `.env` antes de entrar.
 
 Para servir a compilação pelo Node:
 
@@ -31,6 +31,10 @@ npm.cmd start
 
 Abra http://127.0.0.1:3001. O servidor escuta somente no loopback por padrão. Para publicação, configurar HTTPS, domínio, política de origens, observabilidade e processo de execução conforme o provedor; nada foi publicado automaticamente.
 
+## Perfil do aluno
+
+Acesse **Meu perfil** no menu ou `/perfil`. Nome, telefone opcional, cidade opcional e objetivo são persistidos em `auth.users.raw_user_meta_data` pela API Auth, na própria conta autenticada. O e-mail é exibido para identificação e não é alterado por este formulário. Metadados de perfil nunca são usados em políticas de autorização. Editar o nome preserva o ID e o histórico de questões.
+
 ## Jornada do aluno
 
 1. **Bancas e matérias**: Vunesp, Português, Matemática, Raciocínio Lógico e Informática.
@@ -40,7 +44,7 @@ Abra http://127.0.0.1:3001. O servidor escuta somente no loopback por padrão. P
 5. **Caderno de erros**: última tentativa incorreta; um acerto na revisão tira a questão do caderno.
 6. **Dashboard**: tentativas, acertos e erros separados por básico/oficial, taxa por matéria, tempo ativo até confirmar resposta, atividade em 7 dias e meta diária (Brasília).
 
-O dashboard considera todas as tentativas, incluindo revisões. A liberação da etapa oficial usa questões distintas. O tempo é declarado pelo navegador e não é uma métrica antifraude. No modo demo, a meta diária fica neste navegador; no modo Supabase, pertence à conta e é sincronizada no banco.
+O dashboard considera todas as tentativas, incluindo revisões. A liberação da etapa oficial usa questões distintas. O tempo é declarado pelo navegador e não é uma métrica antifraude. A meta diária pertence à conta e é sincronizada no banco.
 
 ## Acervo inicial: 10.053 questões básicas
 
@@ -76,7 +80,7 @@ As variáveis `VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY` e `VITE_SUPAB
 - Repetir uma requisição com o mesmo `request_id` não cria outra tentativa no Supabase.
 - Alunos não podem inserir/editar tentativas ou questões diretamente. A importação é exclusiva de `service_role`.
 - A API valida JWT no servidor com `auth.getUser`, e acessa o banco com o token do aluno para manter RLS.
-- Não exponha o modo demo na internet como produto com contas; ele não tem isolamento/autenticação de alunos.
+- O antigo `APP_MODE=demo` mantém o sistema bloqueado; não libera questões, correção ou dados pessoais.
 
 ## Questões oficiais de provas anteriores
 
@@ -126,4 +130,4 @@ Sem dependências instaladas, os testes do conteúdo e do progresso ainda funcio
 node --test tests/content.test.js tests/progress.test.js
 ```
 
-Os testes de prática usam o modo demo automaticamente; não usam o banco real do `.env`. O banco requer verificação em projeto Supabase real, conforme [docs/verificacao.md](docs/verificacao.md) e [docs/login-google.md](docs/login-google.md). Não considere a migração validada em produção apenas porque os testes locais passaram.
+Os testes usam configuração sintética e verificam que acesso sem sessão retorna 401, incluindo a antiga configuração de demonstração. O perfil usa `auth.updateUser({ data })` para persistir apenas os campos de apresentação da própria conta no Supabase Auth. Teste também login Google, edição do perfil e persistência após sair e entrar com contas reais conforme [docs/verificacao.md](docs/verificacao.md).

@@ -34,7 +34,7 @@ O callback cadastrado no **Google** é o endereço do **Supabase**. As URLs de r
 - A API valida o JWT com `auth.getUser`. As consultas usam o token do aluno e as políticas RLS.
 - `attempts` já restringe leitura ao próprio usuário. `student_settings` restringe leitura, inserção e alteração da meta ao dono.
 - Ao sair ou trocar de conta, o histórico e as questões em memória são limpos. Respostas de requisições antigas são descartadas pela versão da sessão.
-- A demonstração não é uma conta pessoal. Seu histórico local não migra automaticamente para o usuário Google.
+- Não há modo visitante. A tela de login é independente do menu de estudos; questões e correção exigem JWT válido. O perfil está disponível em `/perfil` após entrar.
 - Sessões persistem no mesmo navegador. Em computador compartilhado, o aluno deve sair da conta ao terminar. O botão sair encerra a sessão local deste aplicativo.
 
 Teste real após configuração: entre com Google A, responda uma questão e altere a meta; saia, entre com Google B e confirme histórico vazio e meta padrão; volte à conta A e confirme a persistência. Em duas abas, sair em uma deve atualizar a outra. Cancele o consentimento e confirme a mensagem de cancelamento. Tente novamente e confirme o retorno ao dashboard sem código/token na URL.

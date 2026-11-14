@@ -18,7 +18,7 @@ test('API autentica usuários, usa seu token no banco e mantém preferências in
     const headers = new Headers(init?.headers);
     const token = headers.get('authorization')?.replace('Bearer ', '');
     const uid = users[token];
-    if (url.pathname === '/auth/v1/user') return new Response(JSON.stringify(uid ? { id: uid, aud: 'authenticated', role: 'authenticated', email: token + '@example.test' } : { message: 'Invalid token' }), { status: uid ? 200 : 401, headers: { 'Content-Type': 'application/json' } });
+    if (url.pathname === '/auth/v1/user') return new Response(JSON.stringify(uid ? { id: uid, aud: 'authenticated', role: 'authenticated', email: token + '@example.test' } : token === 'anonymous' ? { id: 'guest', is_anonymous: true } : { message: 'Invalid token' }), { status: uid || token === 'anonymous' ? 200 : 401, headers: { 'Content-Type': 'application/json' } });
     assert.ok(uid, 'nenhuma consulta de banco deve usar token sem usuário validado'); databaseCalls++;
     let result;
     if (url.pathname === '/rest/v1/student_settings') {
@@ -40,6 +40,10 @@ test('API autentica usuários, usa seu token no banco e mantém preferências in
   const asUser = token => ({ headers: { Authorization: `Bearer ${token}` } });
   assert.equal((await request(app, '/api/preferences')).status, 401);
   assert.equal((await request(app, '/api/preferences', asUser('invalid'))).status, 401);
+  for (const path of ['/catalog', '/inventory', '/questions', '/questions/test', '/answers', '/attempts', '/preferences']) {
+    const method = path === '/answers' ? 'POST' : 'GET';
+    for (const token of ['', 'invalid', 'anonymous']) assert.equal((await request(app, `/api${path}`, { method, ...asUser(token) })).status, 401, path);
+  }
   assert.equal(databaseCalls, 0);
   const saved = await request(app, '/api/preferences', { method: 'PUT', headers: { ...asUser('token-a').headers, 'Content-Type': 'application/json' }, body: JSON.stringify({ dailyGoal: 35 }) });
   assert.equal(saved.status, 200);

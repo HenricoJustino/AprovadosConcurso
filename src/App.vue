@@ -4,7 +4,8 @@ import { ArrowUpRight, ArrowRight, ArrowLeft, LayoutDashboard, BookOpen, ListChe
 import { api, configure, supabase } from './api.js';
 import { summarize } from '../shared/progress.js';
 import { signInWithGoogle, callbackError, createSessionScope } from '../shared/auth.js';
-import GoogleSignInButton from './components/GoogleSignInButton.vue';
+import LoginPage from './components/LoginPage.vue';
+import StudentProfile from './components/StudentProfile.vue';
 import { boards as initialBoards, subjects as initialSubjects, topics as initialTopics, officialSources as initialSources } from '../shared/catalog.js';
 
 const route = ref('login'), mobileMenu = ref(false), catalog = ref({ boards: initialBoards, subjects: initialSubjects, topics: initialTopics, officialSources: initialSources }), config = ref(null), inventory = ref(null);
@@ -16,12 +17,11 @@ const authEmail = ref(''), authPassword = ref(''), authSignup = ref(false), auth
 const googleBusy = ref(false), savingGoal = ref(false), accountLoading = ref(false);
 const sessionScope = createSessionScope();
 let authSubscription;
-let storedGoal = 20;
-try { storedGoal = Number(localStorage.getItem('aprovados-goal') || 20); } catch { /* Armazenamento pode estar indisponível no navegador. */ }
-const dailyGoal = ref(storedGoal >= 5 && storedGoal <= 200 ? storedGoal : 20);
+const dailyGoal = ref(20);
 const names = { dashboard: 'Visão geral', boards: 'Bancas e matérias', questions: 'Banco de questões', review: 'Caderno de erros', library: 'Acervo e fontes', settings: 'Minha preparação', study: 'Sua sessão de estudo' };
 const iconMap = { book: BookOpen, calculator: Calculator, brain: Brain, monitor: Monitor };
 names.login = 'Entrar na minha conta';
+names.profile = 'Meu perfil';
 const stats = computed(() => summarize(attempts.value));
 const subjects = computed(() => catalog.value?.subjects || []);
 const topics = computed(() => catalog.value?.topics || []);
@@ -48,7 +48,7 @@ const recommendation = computed(() => {
   const practiced = topics.value.filter(t => topicState(t.id).answered > 0 && !topicState(t.id).unlocked);
   return practiced.sort((a, b) => topicState(a.id).rate - topicState(b.id).rate)[0] || topics.value.find(t => !topicState(t.id).unlocked) || topics.value[0];
 });
-function navigate(to) { route.value = to; window.history.replaceState({}, '', to === 'login' ? '/login' : '/'); mobileMenu.value = false; error.value = ''; notice.value = ''; window.scrollTo({ top: 0, behavior: 'smooth' }); }
+function navigate(to) { if (!user.value) to = 'login'; route.value = to; window.history.replaceState({}, '', to === 'login' ? '/login' : to === 'profile' ? '/perfil' : '/'); mobileMenu.value = false; error.value = ''; notice.value = ''; window.scrollTo({ top: 0, behavior: 'smooth' }); }
 function subjectStats(id) {
   const a = attempts.value.filter(a => a.subject_id === id);
   return { total: a.length, rate: a.length ? Math.round(a.filter(a => a.correct).length / a.length * 100) : 0, mastered: topics.value.filter(t => t.subject_id === id && topicState(t.id).unlocked).length };
@@ -58,37 +58,31 @@ async function refreshData() {
   const inventoryData = await api('/inventory');
   if (!sessionScope.isCurrent(scope)) return;
   inventory.value = inventoryData;
-  if (config.value.mode === 'demo') {
-    try {
-      const saved = JSON.parse(localStorage.getItem('aprovados-demo-attempts') || '[]');
-      if (!Array.isArray(saved)) throw new Error();
-      attempts.value = saved.filter(a => a && typeof a.correct === 'boolean' && typeof a.question_id === 'string' && ['basic','official'].includes(a.kind) && !Number.isNaN(Date.parse(a.created_at)));
-    } catch { attempts.value = []; error.value = 'O histórico local não pôde ser lido. Você pode continuar estudando.'; }
-  } else {
-    const preferences = await api('/preferences');
+  const preferences = await api('/preferences');
+  if (!sessionScope.isCurrent(scope)) return;
+  dailyGoal.value = preferences.dailyGoal;
+  const all = [];
+  let more = true, page = 0;
+  while (more) {
+    const data = await api(`/attempts?page=${page++}`);
     if (!sessionScope.isCurrent(scope)) return;
-    dailyGoal.value = preferences.dailyGoal;
-    const all = [];
-    let more = true, page = 0;
-    while (more) {
-      const data = await api(`/attempts?page=${page++}`);
-      if (!sessionScope.isCurrent(scope)) return;
-      all.push(...data.attempts); more = data.hasMore;
-    }
-    attempts.value = all;
+    all.push(...data.attempts); more = data.hasMore;
   }
+  attempts.value = all;
 }
 onMounted(async () => {
+  window.addEventListener('auth-required', expireSession);
   try {
     const loginError = callbackError(window.location.href);
     config.value = await configure();
     if (supabase) {
-      const { data, error: sessionError } = await supabase.auth.getSession();
-      if (sessionError) throw new Error('Não foi possível restaurar sua sessão. Entre novamente.');
-      user.value = data.session?.user || null;
+      const { data: localSession } = await supabase.auth.getSession();
+      const { data, error: sessionError } = localSession.session ? await supabase.auth.getUser() : { data: { user: null }, error: null };
+      if (sessionError) { await supabase.auth.signOut({ scope: 'local' }); error.value = 'Sua sessão expirou. Entre novamente.'; }
+      user.value = !sessionError && data.user && !data.user.is_anonymous ? data.user : null;
       const { data: listener } = supabase.auth.onAuthStateChange((event, session) => {
         const previousId = user.value?.id;
-        user.value = session?.user || null;
+        user.value = session?.user && !session.user.is_anonymous ? session.user : null;
         if (previousId !== user.value?.id) {
           sessionScope.invalidate();
           attempts.value = []; questionItems.value = []; result.value = null; inventory.value = null;
@@ -112,16 +106,21 @@ onMounted(async () => {
       }
     }
     const initialAuthError = error.value || loginError;
-    navigate(user.value ? 'dashboard' : 'login');
+    navigate(user.value ? (window.location.pathname === '/perfil' ? 'profile' : 'dashboard') : 'login');
     if (initialAuthError) error.value = initialAuthError;
-    if (config.value.mode === 'demo' || user.value) {
+    if (user.value) {
       if (config.value.apiAvailable === false) error.value = 'Sua conta está conectada, mas a área de estudos está temporariamente indisponível. Tente recarregar em instantes.';
       else await refreshData();
     }
   } catch (e) { error.value = e.message; }
   finally { booting.value = false; }
 });
-onUnmounted(() => { authSubscription?.unsubscribe(); sessionScope.invalidate(); });
+onUnmounted(() => { authSubscription?.unsubscribe(); sessionScope.invalidate(); window.removeEventListener('auth-required', expireSession); });
+function expireSession() {
+  sessionScope.invalidate(); user.value = null; attempts.value = []; questionItems.value = []; result.value = null; inventory.value = null;
+  accountLoading.value = false; navigate('login'); error.value = 'Sua sessão expirou. Entre novamente.';
+  supabase?.auth.signOut({ scope: 'local' });
+}
 async function googleLogin() {
   if (authBusy.value || googleBusy.value) return;
   googleBusy.value = true; error.value = ''; notice.value = '';
@@ -168,10 +167,6 @@ async function answer() {
     result.value = data;
     if (!attempts.value.some(a => a.request_id === data.request_id)) attempts.value.push(data);
     sessionAnswers.value++;
-    if (config.value.mode === 'demo') {
-      try { localStorage.setItem('aprovados-demo-attempts', JSON.stringify(attempts.value)); }
-      catch { error.value = 'A resposta foi corrigida, mas o navegador não conseguiu salvar o histórico. Exporte seus dados em Minha preparação.'; }
-    }
   } catch (e) { if (sessionScope.isCurrent(scope)) error.value = e.message; } finally { if (sessionScope.isCurrent(scope)) busy.value = false; }
 }
 async function nextQuestion() {
@@ -204,8 +199,7 @@ async function saveGoal() {
   dailyGoal.value = Math.min(200, Math.max(5, Number(dailyGoal.value) || 20));
   savingGoal.value = true;
   try {
-    if (config.value.mode === 'demo') localStorage.setItem('aprovados-goal', String(dailyGoal.value));
-    else await api('/preferences', { method: 'PUT', body: JSON.stringify({ dailyGoal: dailyGoal.value }) });
+    await api('/preferences', { method: 'PUT', body: JSON.stringify({ dailyGoal: dailyGoal.value }) });
     if (sessionScope.isCurrent(scope)) notice.value = 'Meta diária atualizada.';
   } catch { if (sessionScope.isCurrent(scope)) error.value = 'Não foi possível salvar sua meta. Tente novamente.'; }
   finally { if (sessionScope.isCurrent(scope)) savingGoal.value = false; }
@@ -221,7 +215,8 @@ function reloadApp() { window.location.reload(); }
 </script>
 
 <template>
-  <div class="app-shell">
+  <LoginPage v-if="!user || booting" :config="config" :booting="booting" :error="error" :notice="notice" :google-busy="googleBusy" :auth-busy="authBusy" :auth-signup="authSignup" v-model:email="authEmail" v-model:password="authPassword" @google="googleLogin" @submit="authenticate" @toggle="authSignup = !authSignup" @reload="reloadApp"/>
+  <div v-else class="app-shell">
     <button v-if="mobileMenu" class="sidebar-overlay" aria-label="Fechar menu" @click="mobileMenu = false"></button>
     <aside class="sidebar" :class="{ 'is-open': mobileMenu }">
       <a class="brand" href="#" @click.prevent="navigate('dashboard')"><span class="brand-icon"><GraduationCap :size="24" /></span><span>aprovados<span class="brand-dot">.</span><small>UM PASSO DE CADA VEZ</small></span></a>
@@ -230,43 +225,19 @@ function reloadApp() { window.location.reload(); }
         <button v-for="item in [{ id: 'dashboard', label: 'Visão geral', icon: LayoutDashboard }, { id: 'boards', label: 'Bancas e matérias', icon: BookOpen }, { id: 'questions', label: 'Banco de questões', icon: ListChecks }, { id: 'review', label: 'Caderno de erros', icon: RotateCcw }, { id: 'library', label: 'Acervo e fontes', icon: Library }]" :key="item.id" :class="{ active: route === item.id || route === 'study' && item.id === 'boards' }" @click="navigate(item.id)"><component :is="item.icon" :size="19"/><span>{{ item.label }}</span><span v-if="item.id === 'review' && wrongAttempts.length" class="nav-count">{{ wrongAttempts.length }}</span></button>
       </nav>
       <div class="sidebar-plan"><span class="tiny-label">SUA BANCA</span><div><span class="board-emblem">V</span><span>Vunesp<small>Preparação do básico à prova</small></span><CheckCircle2 :size="16" /></div></div>
-      <div class="sidebar-bottom"><div class="sidebar-note"><span class="note-spark">✦</span><p>O que você aprende hoje<br>abre caminhos amanhã.</p></div><button class="settings-nav" :class="{ active: route === 'settings' }" @click="navigate('settings')"><Settings2 :size="18"/>Minha preparação</button><div class="profile"><span class="avatar">{{ user ? displayName.slice(0,2).toUpperCase() : 'EU' }}</span><span>{{ user ? displayName : 'Meu espaço de estudo' }}<small>{{ config?.mode === 'demo' ? 'Modo local · neste navegador' : 'Conta do estudante' }}</small></span><button v-if="user" class="icon-button" aria-label="Sair da conta" @click="logout"><LogOut :size="17"/></button></div></div>
+      <div class="sidebar-bottom"><div class="sidebar-note"><span class="note-spark">✦</span><p>O que você aprende hoje<br>abre caminhos amanhã.</p></div><button class="settings-nav" :class="{ active: route === 'settings' }" @click="navigate('settings')"><Settings2 :size="18"/>Minha preparação</button><button class="settings-nav" :class="{ active: route === 'profile' }" @click="navigate('profile')"><GraduationCap :size="18"/>Meu perfil</button><div class="profile"><span class="avatar">{{ user ? displayName.slice(0,2).toUpperCase() : 'EU' }}</span><span>{{ user ? displayName : 'Meu espaço de estudo' }}<small>Conta do estudante</small></span><button v-if="user" class="icon-button" aria-label="Sair da conta" @click="logout"><LogOut :size="17"/></button></div></div>
     </aside>
 
     <div class="main-shell">
-      <header class="topbar"><div class="breadcrumb"><button class="icon-button mobile-toggle" aria-label="Abrir menu" @click="mobileMenu = true"><Menu :size="22"/></button><span>Meu espaço</span><ChevronRight :size="14"/><strong>{{ names[route] }}</strong></div><div class="header-actions"><span class="status-dot"></span><span>{{ config?.mode === 'supabase' ? 'Supabase conectado' : 'Preparação Vunesp' }}</span><button class="icon-button" aria-label="Sobre o acervo" @click="navigate('library')"><CircleHelp :size="19"/></button><span class="mini-avatar">{{ user ? displayName.slice(0,2).toUpperCase() : 'EU' }}</span></div></header>
+      <header class="topbar"><div class="breadcrumb"><button class="icon-button mobile-toggle" aria-label="Abrir menu" @click="mobileMenu = true"><Menu :size="22"/></button><span>Meu espaço</span><ChevronRight :size="14"/><strong>{{ names[route] }}</strong></div><div class="header-actions"><span class="status-dot"></span><span>{{ config?.mode === 'supabase' ? 'Supabase conectado' : 'Preparação Vunesp' }}</span><button class="icon-button" aria-label="Sobre o acervo" @click="navigate('library')"><CircleHelp :size="19"/></button><button class="mini-avatar" aria-label="Abrir meu perfil" @click="navigate('profile')">{{ user ? displayName.slice(0,2).toUpperCase() : 'EU' }}</button></div></header>
 
       <main id="main-content">
         <div v-if="error" class="alert error" role="alert"><AlertCircle :size="20"/><span>{{ error }}</span><button class="icon-button" aria-label="Fechar erro" @click="error = ''"><X :size="16"/></button></div>
         <div v-if="notice" class="alert success" role="status"><CheckCircle2 :size="20"/><span>{{ notice }}</span><button class="icon-button" aria-label="Fechar aviso" @click="notice = ''"><X :size="16"/></button></div>
         <div v-if="booting || accountLoading" class="loading-state"><span class="spinner"></span>{{ accountLoading ? 'Carregando seu progresso…' : 'Preparando seu espaço de estudo…' }}</div>
         <section v-else-if="!config" class="panel empty-state"><CircleHelp :size="32"/><h1>Vamos tentar novamente?</h1><p>Não conseguimos carregar a configuração de acesso. Seu histórico não foi apagado.</p><button class="button primary" @click="reloadApp">Recarregar a página<RotateCcw :size="17"/></button></section>
-        <div v-else-if="config?.mode === 'supabase' && !user || route === 'login'" class="auth-wrap">
-          <div class="eyebrow">SEU PRÓXIMO CAPÍTULO</div><h1>Seu estudo.<br>Sua conta. Sua evolução.</h1>
-          <p>Entre com sua conta Google para ter seu próprio dashboard, histórico de questões e caderno de erros.</p>
-          <div class="panel auth-form">
-            <h2>{{ authSignup ? 'Crie sua conta' : 'Entre no seu espaço' }}</h2>
-            <p v-if="config.apiAvailable === false" class="auth-caption">O login está disponível. A área de estudos será liberada quando a conexão do sistema for restabelecida.</p>
-            <GoogleSignInButton :busy="googleBusy" :disabled="!supabase || authBusy" @click="googleLogin" />
-            <p class="auth-caption">Cada conta tem seu próprio progresso. Você não precisa criar uma senha para entrar com Google.</p>
-            <template v-if="supabase">
-              <div class="auth-divider"><span>ou use seu e-mail</span></div>
-              <form class="email-auth-form" @submit.prevent="authenticate">
-                <label>E-mail<input v-model="authEmail" type="email" required autocomplete="email" placeholder="voce@exemplo.com" :disabled="authBusy || googleBusy"></label>
-                <label>Senha<input v-model="authPassword" type="password" required minlength="8" :autocomplete="authSignup ? 'new-password' : 'current-password'" placeholder="Pelo menos 8 caracteres" :disabled="authBusy || googleBusy"></label>
-                <button class="button primary" :disabled="authBusy || googleBusy">{{ authBusy ? 'Aguarde…' : authSignup ? 'Criar conta' : 'Entrar com e-mail' }}<ArrowRight :size="17"/></button>
-                <button type="button" class="text-button" :disabled="authBusy || googleBusy" @click="authSignup = !authSignup">{{ authSignup ? 'Já tenho uma conta' : 'Quero criar minha conta' }}</button>
-              </form>
-            </template>
-            <template v-else>
-              <div class="auth-demo-note"><CircleHelp :size="18"/><p>O login ainda não está disponível neste ambiente. A demonstração salva o histórico somente neste navegador.</p></div>
-              <button class="button secondary" @click="navigate('dashboard')">Continuar na demonstração<ArrowRight :size="17"/></button>
-            </template>
-          </div>
-        </div>
-
-        <template v-else-if="catalog">
-          <div v-if="config.mode === 'demo'" class="demo-account-banner"><div><LockKeyhole :size="18"/><span>Você está na demonstração local. Entre para ter seu espaço pessoal.</span></div><button class="text-button" @click="navigate('login')">Conhecer o login<ArrowRight :size="15"/></button></div>
+        <template v-else-if="user && catalog">
+          <StudentProfile v-if="route === 'profile'" :user="user" :auth="supabase.auth" @saved="user = $event" @logout="logout"/>
           <template v-if="route === 'dashboard'">
             <div class="page-heading"><div><div class="eyebrow">CONSTÂNCIA TRANSFORMA</div><h1>Seu futuro começa no que você faz hoje<span class="green-dot">.</span></h1><p>Bom estudo, {{ displayName }}. Vamos dar mais um passo na sua aprovação?</p></div><span class="date-pill"><span></span>{{ new Intl.DateTimeFormat('pt-BR', { day: 'numeric', month: 'long' }).format(new Date()) }}</span></div>
             <section class="hero"><div class="hero-copy"><span class="hero-tag"><span></span>DO BÁSICO À APROVAÇÃO</span><h2>Entender primeiro.<br>Acertar como consequência.</h2><p>Construa uma base sólida antes de encarar a prova.<br class="desktop-br"> Sua preparação tem um caminho — e começa aqui.</p><button class="button light" @click="openTopic(recommendation.id)">{{ stats.total ? 'Continuar minha jornada' : 'Começar minha jornada' }}<ArrowUpRight :size="19"/></button></div><div class="hero-art" aria-hidden="true"><div class="orbit orbit-one"></div><div class="orbit orbit-two"></div><div class="art-star star-one">✧</div><div class="art-star star-two">✦</div><div class="paper paper-back"></div><div class="paper paper-front"><span class="paper-label">UM PASSO A MAIS</span><div class="paper-mark"><Check :size="30"/></div><span class="paper-title">Você é capaz.</span><span class="paper-line"></span><span class="paper-line short"></span><div class="paper-progress"><span></span></div><span class="paper-caption">Conhecimento que fica.</span></div><div class="floating-badge"><TrendingUp :size="18"/>Evolução, todos os dias</div></div></section>
@@ -324,8 +295,8 @@ function reloadApp() { window.location.reload(); }
 
           <template v-if="route === 'settings'">
             <div class="page-heading"><div><div class="eyebrow">NO SEU RITMO</div><h1>Uma preparação que cabe na sua rotina<span class="green-dot">.</span></h1><p>Defina um compromisso possível e acompanhe seus passos.</p></div></div>
-            <div class="settings-grid"><section class="panel"><span class="metric-icon sand"><Target :size="22"/></span><h2>Meta diária de questões</h2><p class="muted">A meta considera todas as tentativas do dia, no horário de Brasília.</p><form class="goal-form" @submit.prevent="saveGoal"><label>Questões por dia<input v-model="dailyGoal" type="number" min="5" max="200" required></label><button class="button primary">Salvar meta<Check :size="17"/></button></form></section><section class="panel"><span class="metric-icon sage"><Library :size="22"/></span><h2>Seu histórico é seu</h2><p class="muted">{{ config.mode === 'demo' ? 'Você está no modo local. As respostas ficam neste navegador e não são sincronizadas entre dispositivos. Limpar os dados do navegador remove esse histórico.' : 'Seu histórico está associado à sua conta e protegido por políticas de acesso no Supabase.' }}</p><button class="button secondary" @click="exportHistory">Exportar meu histórico<ArrowUpRight :size="17"/></button></section></div>
-            <section class="panel settings-note"><h2>{{ config.mode === 'demo' ? 'Modo local ativo' : 'Conta conectada' }}</h2><p>{{ config.mode === 'demo' ? 'Você já pode estudar e testar a jornada. A autenticação e a sincronização ficam disponíveis depois que o projeto Supabase é configurado. Consulte o README do projeto para os passos de instalação.' : `Conectado como ${user?.email}. Seu progresso é salvo no banco após cada resposta.` }}</p></section>
+            <div class="settings-grid"><section class="panel"><span class="metric-icon sand"><Target :size="22"/></span><h2>Meta diária de questões</h2><p class="muted">A meta considera todas as tentativas do dia, no horário de Brasília.</p><form class="goal-form" @submit.prevent="saveGoal"><label>Questões por dia<input v-model="dailyGoal" type="number" min="5" max="200" required></label><button class="button primary">Salvar meta<Check :size="17"/></button></form></section><section class="panel"><span class="metric-icon sage"><Library :size="22"/></span><h2>Seu histórico é seu</h2><p class="muted">Seu histórico está associado à sua conta e protegido por políticas de acesso no Supabase.</p><button class="button secondary" @click="exportHistory">Exportar meu histórico<ArrowUpRight :size="17"/></button></section></div>
+            <section class="panel settings-note"><h2>Conta conectada</h2><p>Conectado como {{ user?.email }}. Seu progresso é salvo no banco após cada resposta.</p></section>
           </template>
           <footer><span>aprovados<span class="green-dot">.</span><span class="footer-divider">/</span>Seu esforço tem direção.</span><span>Um passo de cada vez.</span></footer>
         </template>

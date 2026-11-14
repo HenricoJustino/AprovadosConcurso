@@ -16,14 +16,16 @@ test('login continua disponível se API estiver ausente, sem rede ou retornar HT
     assert.equal(result.supabaseUrl, built.VITE_SUPABASE_URL);
   }
 });
-test('API disponível define o modo, inclusive demonstração explícita', async () => {
+test('configuração antiga de demonstração nunca libera estudos; login pode usar a configuração pública do build', async () => {
   const result = await resolveAppConfig(publicBuildConfig(built), async () => ({ ok: true, json: async () => ({ mode: 'demo' }) }));
-  assert.equal(result.mode, 'demo');
-  assert.equal(result.apiAvailable, true);
+  assert.equal(result.mode, 'supabase');
+  assert.equal(result.apiAvailable, false);
+  const locked = await resolveAppConfig(null, async () => ({ ok: true, json: async () => ({ mode: 'locked' }) }));
+  assert.equal(locked.mode, 'locked');
 });
 test('configuração ausente tem erro recuperável; chaves de administrador são recusadas', async () => {
   assert.equal(publicBuildConfig({}), null);
-  await assert.rejects(() => resolveAppConfig(null, async () => ({ ok: false })), /recarregar/);
+  assert.equal((await resolveAppConfig(null, async () => ({ ok: false }))).mode, 'locked');
   assert.throws(() => publicBuildConfig({ ...built, VITE_SUPABASE_PUBLISHABLE_KEY: 'sb_secret_test' }), /pública/);
   const jwt = `eyJ.${Buffer.from(JSON.stringify({ role: 'service_role' })).toString('base64url')}.test`;
   assert.throws(() => publicBuildConfig({ ...built, VITE_SUPABASE_PUBLISHABLE_KEY: jwt }), /pública/);

@@ -9,12 +9,13 @@ export async function configure() {
 }
 export async function api(path, options = {}) {
   const headers = { 'Content-Type': 'application/json', ...options.headers };
-  if (supabase) {
-    const { data } = await supabase.auth.getSession();
-    if (data.session) headers.Authorization = `Bearer ${data.session.access_token}`;
-  }
+  if (!supabase) throw new Error('Entre na sua conta para continuar.');
+  const { data } = await supabase.auth.getSession();
+  if (!data.session || data.session.user.is_anonymous) throw new Error('Entre na sua conta para continuar.');
+  headers.Authorization = `Bearer ${data.session.access_token}`;
   const response = await fetch(`/api${path}`, { ...options, headers });
   const result = await response.json();
+  if (response.status === 401) window.dispatchEvent(new Event('auth-required'));
   if (!response.ok) throw new Error(result.error || 'Ocorreu um erro. Tente novamente.');
   return result;
 }

@@ -19,11 +19,12 @@ export async function resolveAppConfig(buildConfig, fetchConfig) {
     const response = await fetchConfig();
     if (!response.ok) throw new Error();
     const config = await response.json();
-    if (!['demo', 'supabase'].includes(config.mode)) throw new Error();
+    if (!['locked', 'supabase'].includes(config.mode)) throw new Error();
+    if (config.mode === 'locked' && buildConfig) return { ...buildConfig, apiAvailable: false };
     if (config.mode === 'supabase' && (!config.supabaseUrl || !config.supabaseAnonKey)) throw new Error();
     return { ...config, apiAvailable: true };
   } catch {
     if (buildConfig) return { ...buildConfig, apiAvailable: false };
-    throw new Error('Não foi possível iniciar o sistema. Tente recarregar a página.');
+    return { mode: 'locked', apiAvailable: false };
   }
 }

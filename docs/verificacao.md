@@ -2,9 +2,9 @@
 
 ## Interface
 
-1. Abra o dashboard com armazenamento vazio. Todos os números de desempenho devem estar zerados, sem dados fictícios.
+1. Sem sessão, abra `/`, `/perfil` e tente acessar questões. Somente o login deve aparecer e a API deve retornar 401. Entre com uma conta nova e abra o dashboard. Todos os números de desempenho devem estar zerados, sem dados fictícios.
 2. Abra Bancas e matérias > Português > Regência verbal. Leia e marque a confirmação de leitura; só então inicie a prática.
-3. Responda incorretamente e veja explicação, alternativa correta e atualização de erros. Recarregue: o histórico demo deve persistir no mesmo navegador.
+3. Responda incorretamente e veja explicação, alternativa correta e atualização de erros. Recarregue: o histórico deve ser recuperado da conta no Supabase.
 4. Revise no Caderno de erros e acerte. A questão deve sair da lista, mas ambas as tentativas continuam no dashboard.
 5. Responda 5 questões básicas distintas com 4 acertos. A etapa oficial do assunto deve liberar. Repetir uma mesma questão não deve bastar.
 6. Sem importação oficial, mostre estado vazio com explicação e acesso às fontes. Nenhum exercício autoral deve aparecer como oficial.

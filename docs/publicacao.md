@@ -19,7 +19,7 @@ VITE_SUPABASE_URL=<mesma URL>
 VITE_SUPABASE_PUBLISHABLE_KEY=<mesma chave pública>
 ```
 
-As chaves `anon` legadas continuam aceitas. Sem `APP_MODE`, a API seleciona Supabase automaticamente quando encontra URL e chave pública. Uma declaração explícita de `APP_MODE=demo` mantém o modo de demonstração.
+As chaves `anon` legadas continuam aceitas. Sem `APP_MODE`, a API seleciona Supabase automaticamente quando encontra URL e chave pública. Uma declaração antiga de `APP_MODE=demo` bloqueia o acesso às APIs. Sem configuração, o sistema usa `mode: "locked"` e continua exigindo login.
 
 As variáveis `VITE_` são públicas e entram no build. Depois de alterá-las, faça novo deploy. Não coloque `service_role`, `sb_secret_...` ou segredos do Google em variáveis `VITE_`. O `.env` local não é enviado ao GitHub ou à hospedagem automaticamente.
 
