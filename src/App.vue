@@ -7,7 +7,7 @@ import { signInWithGoogle, callbackError, createSessionScope } from '../shared/a
 import GoogleSignInButton from './components/GoogleSignInButton.vue';
 import { boards as initialBoards, subjects as initialSubjects, topics as initialTopics, officialSources as initialSources } from '../shared/catalog.js';
 
-const route = ref('dashboard'), mobileMenu = ref(false), catalog = ref({ boards: initialBoards, subjects: initialSubjects, topics: initialTopics, officialSources: initialSources }), config = ref(null), inventory = ref(null);
+const route = ref('login'), mobileMenu = ref(false), catalog = ref({ boards: initialBoards, subjects: initialSubjects, topics: initialTopics, officialSources: initialSources }), config = ref(null), inventory = ref(null);
 const error = ref(''), notice = ref(''), booting = ref(true), user = ref(null), attempts = ref([]);
 const selectedSubject = ref('portugues'), selectedTopic = ref('regencia'), lessonOpen = ref(false), lessonRead = ref(false);
 const selectedKind = ref('basic'), query = ref(''), questionItems = ref([]), questionTotal = ref(0), offset = ref(0), questionIndex = ref(0);
@@ -48,7 +48,7 @@ const recommendation = computed(() => {
   const practiced = topics.value.filter(t => topicState(t.id).answered > 0 && !topicState(t.id).unlocked);
   return practiced.sort((a, b) => topicState(a.id).rate - topicState(b.id).rate)[0] || topics.value.find(t => !topicState(t.id).unlocked) || topics.value[0];
 });
-function navigate(to) { route.value = to; mobileMenu.value = false; error.value = ''; notice.value = ''; window.scrollTo({ top: 0, behavior: 'smooth' }); }
+function navigate(to) { route.value = to; window.history.replaceState({}, '', to === 'login' ? '/login' : '/'); mobileMenu.value = false; error.value = ''; notice.value = ''; window.scrollTo({ top: 0, behavior: 'smooth' }); }
 function subjectStats(id) {
   const a = attempts.value.filter(a => a.subject_id === id);
   return { total: a.length, rate: a.length ? Math.round(a.filter(a => a.correct).length / a.length * 100) : 0, mastered: topics.value.filter(t => t.subject_id === id && topicState(t.id).unlocked).length };
@@ -95,7 +95,7 @@ onMounted(async () => {
           selectedOption.value = null; sessionAnswers.value = 0; authPassword.value = ''; authEmail.value = '';
           dailyGoal.value = 20; lessonRead.value = false; savingGoal.value = false;
           busy.value = false; loadingQuestions.value = false; authBusy.value = false; googleBusy.value = false;
-          accountLoading.value = !!user.value; navigate('dashboard');
+          accountLoading.value = !!user.value; navigate(user.value ? 'dashboard' : 'login');
           const scope = sessionScope.capture();
           if (user.value) setTimeout(async () => {
             if (!sessionScope.isCurrent(scope)) return;
@@ -111,6 +111,9 @@ onMounted(async () => {
         window.history.replaceState({}, '', '/');
       }
     }
+    const initialAuthError = error.value || loginError;
+    navigate(user.value ? 'dashboard' : 'login');
+    if (initialAuthError) error.value = initialAuthError;
     if (config.value.mode === 'demo' || user.value) {
       if (config.value.apiAvailable === false) error.value = 'Sua conta está conectada, mas a área de estudos está temporariamente indisponível. Tente recarregar em instantes.';
       else await refreshData();
