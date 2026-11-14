@@ -1,0 +1,25 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { request } from './helpers/http.js';
+process.env.APP_MODE = 'demo';
+process.env.VERCEL = '1';
+const { default: handler } = await import('../api/index.js');
+test('entry point de produção atende API sem iniciar servidor fixo', async () => {
+  const health = await request(handler, '/api/health');
+  assert.equal(health.status, 200);
+  assert.equal((await health.json()).ok, true);
+  const config = await request(handler, '/api/config');
+  const settings = await config.json();
+  assert.equal(settings.mode, 'demo');
+  assert.equal('serviceRoleKey' in settings, false);
+  const missing = await request(handler, '/api/does-not-exist');
+  assert.equal(missing.status, 404);
+  assert.equal(typeof (await missing.json()).error, 'string');
+  const rewritten = await request(handler, '/api/index?__route=health');
+  assert.equal(rewritten.status, 200);
+  assert.equal((await rewritten.json()).ok, true);
+  const filtered = await request(handler, '/api/index?__route=questions&topic=regencia');
+  assert.equal((await filtered.json()).total, 8);
+  const invalid = await request(handler, '/api/index?__route=..%2Fprivate');
+  assert.equal(invalid.status, 400);
+});

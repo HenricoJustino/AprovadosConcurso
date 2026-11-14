@@ -6,6 +6,8 @@ Sistema local em **Vue 3 + Vite**, **Node.js + Express** e **Supabase (PostgreSQ
 
 **Verificar a configuração preenchida no `.env`:** `npm.cmd run check:supabase`. A API aceita chave pública nova `SUPABASE_PUBLISHABLE_KEY` ou a chave anon legada, inclusive pelos nomes equivalentes `VITE_`. Valores reais não devem ser colocados no `.env.example` nem enviados ao GitHub.
 
+**Publicação:** o projeto inclui a API Node em `api/index.js` e o roteamento da Vercel. Veja [publicacao.md](docs/publicacao.md) para configurar o site completo; publicar apenas `dist` não executa a API. O acervo de 10.053 questões já foi migrado ao projeto Supabase desta instalação e verificado contra a fonte local.
+
 ## Iniciar no Windows
 
 Requisito: Node.js 22.18 ou superior. No terminal do VS Code, dentro desta pasta:
@@ -58,7 +60,7 @@ Os testes recalculam independentemente as 10 mil respostas a partir dos dados do
 ## Conectar ao Supabase
 
 1. Crie seu projeto Supabase.
-2. Execute `supabase/migrations/001_initial.sql` no SQL Editor **uma vez**, em banco novo. Depois execute `002_student_settings.sql`. Os scripts criam tabelas, índices, políticas e funções.
+2. Em banco novo, execute `supabase/migrations/001_initial.sql` **uma vez**, depois `002_student_settings.sql` e `supabase/security.sql`. Não reexecute a estrutura inicial em um banco que já tem essas tabelas.
 3. Em `.env`, configure `SUPABASE_URL` e `SUPABASE_PUBLISHABLE_KEY` ou `SUPABASE_ANON_KEY`. Para popular/importar questões, configure também `SUPABASE_SERVICE_ROLE_KEY`.
 4. Execute `npm.cmd run seed`. As 10.053 questões, matérias e conceitos serão enviados em lotes de 200. O seed pode ser repetido: IDs são determinísticos e respostas existentes não são apagadas. Cada lote é atômico, não o seed inteiro; após falha, execute novamente.
 5. Altere `APP_MODE=supabase` e reinicie `npm.cmd run dev`.

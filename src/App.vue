@@ -5,8 +5,9 @@ import { api, configure, supabase } from './api.js';
 import { summarize } from '../shared/progress.js';
 import { signInWithGoogle, callbackError, createSessionScope } from '../shared/auth.js';
 import GoogleSignInButton from './components/GoogleSignInButton.vue';
+import { boards as initialBoards, subjects as initialSubjects, topics as initialTopics, officialSources as initialSources } from '../shared/catalog.js';
 
-const route = ref('dashboard'), mobileMenu = ref(false), catalog = ref(null), config = ref(null), inventory = ref(null);
+const route = ref('dashboard'), mobileMenu = ref(false), catalog = ref({ boards: initialBoards, subjects: initialSubjects, topics: initialTopics, officialSources: initialSources }), config = ref(null), inventory = ref(null);
 const error = ref(''), notice = ref(''), booting = ref(true), user = ref(null), attempts = ref([]);
 const selectedSubject = ref('portugues'), selectedTopic = ref('regencia'), lessonOpen = ref(false), lessonRead = ref(false);
 const selectedKind = ref('basic'), query = ref(''), questionItems = ref([]), questionTotal = ref(0), offset = ref(0), questionIndex = ref(0);
@@ -80,7 +81,7 @@ async function refreshData() {
 onMounted(async () => {
   try {
     const loginError = callbackError(window.location.href);
-    config.value = await configure(); catalog.value = await api('/catalog');
+    config.value = await configure();
     if (supabase) {
       const { data, error: sessionError } = await supabase.auth.getSession();
       if (sessionError) throw new Error('Não foi possível restaurar sua sessão. Entre novamente.');
@@ -110,7 +111,10 @@ onMounted(async () => {
         window.history.replaceState({}, '', '/');
       }
     }
-    if (config.value.mode === 'demo' || user.value) await refreshData();
+    if (config.value.mode === 'demo' || user.value) {
+      if (config.value.apiAvailable === false) error.value = 'Sua conta está conectada, mas a área de estudos está temporariamente indisponível. Tente recarregar em instantes.';
+      else await refreshData();
+    }
   } catch (e) { error.value = e.message; }
   finally { booting.value = false; }
 });
@@ -210,6 +214,7 @@ function exportHistory() {
 const number = n => new Intl.NumberFormat('pt-BR').format(n || 0);
 const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
 const formatDate = s => new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }).format(new Date(s));
+function reloadApp() { window.location.reload(); }
 </script>
 
 <template>
@@ -232,11 +237,13 @@ const formatDate = s => new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month
         <div v-if="error" class="alert error" role="alert"><AlertCircle :size="20"/><span>{{ error }}</span><button class="icon-button" aria-label="Fechar erro" @click="error = ''"><X :size="16"/></button></div>
         <div v-if="notice" class="alert success" role="status"><CheckCircle2 :size="20"/><span>{{ notice }}</span><button class="icon-button" aria-label="Fechar aviso" @click="notice = ''"><X :size="16"/></button></div>
         <div v-if="booting || accountLoading" class="loading-state"><span class="spinner"></span>{{ accountLoading ? 'Carregando seu progresso…' : 'Preparando seu espaço de estudo…' }}</div>
+        <section v-else-if="!config" class="panel empty-state"><CircleHelp :size="32"/><h1>Vamos tentar novamente?</h1><p>Não conseguimos carregar a configuração de acesso. Seu histórico não foi apagado.</p><button class="button primary" @click="reloadApp">Recarregar a página<RotateCcw :size="17"/></button></section>
         <div v-else-if="config?.mode === 'supabase' && !user || route === 'login'" class="auth-wrap">
           <div class="eyebrow">SEU PRÓXIMO CAPÍTULO</div><h1>Seu estudo.<br>Sua conta. Sua evolução.</h1>
           <p>Entre com sua conta Google para ter seu próprio dashboard, histórico de questões e caderno de erros.</p>
           <div class="panel auth-form">
             <h2>{{ authSignup ? 'Crie sua conta' : 'Entre no seu espaço' }}</h2>
+            <p v-if="config.apiAvailable === false" class="auth-caption">O login está disponível. A área de estudos será liberada quando a conexão do sistema for restabelecida.</p>
             <GoogleSignInButton :busy="googleBusy" :disabled="!supabase || authBusy" @click="googleLogin" />
             <p class="auth-caption">Cada conta tem seu próprio progresso. Você não precisa criar uma senha para entrar com Google.</p>
             <template v-if="supabase">

@@ -12,10 +12,11 @@ import { questions, questionMap, publicQuestion } from './content.js';
 import { getDatabaseConfig, validateDatabaseConfig } from './config.js';
 
 export const app = express();
-export const mode = process.env.APP_MODE || 'demo';
-if (!['demo', 'supabase'].includes(mode)) throw new Error('APP_MODE deve ser demo ou supabase.');
 const databaseConfig = getDatabaseConfig();
+export const mode = process.env.APP_MODE || (databaseConfig.url && databaseConfig.publicKey ? 'supabase' : 'demo');
+if (!['demo', 'supabase'].includes(mode)) throw new Error('APP_MODE deve ser demo ou supabase.');
 if (mode === 'supabase') validateDatabaseConfig(databaseConfig);
+if (process.env.VERCEL) app.set('trust proxy', 1);
 app.disable('x-powered-by');
 app.use(helmet({ contentSecurityPolicy: { directives: { defaultSrc: ["'self'"], scriptSrc: ["'self'"], styleSrc: ["'self'", "'unsafe-inline'"], connectSrc: ["'self'", 'https://*.supabase.co'], imgSrc: ["'self'", 'data:'], fontSrc: ["'self'"] } } }));
 app.use(express.json({ limit: '5mb' }));
@@ -118,10 +119,11 @@ app.get('/api/attempts', async (req, res, next) => {
   } catch (error) { next(error); }
 });
 const dist = fileURLToPath(new URL('../dist/', import.meta.url));
-if (existsSync(dist)) {
+if (!process.env.VERCEL && existsSync(dist)) {
   app.use(express.static(dist));
   app.get('/{*path}', (req, res) => req.path.startsWith('/api/') ? res.status(404).json({ error: 'Rota não encontrada.' }) : res.sendFile(`${dist}/index.html`));
 }
+app.use('/api', (req, res) => res.status(404).json({ error: 'Rota não encontrada.' }));
 app.use((error, req, res, next) => {
   if (error instanceof z.ZodError) return res.status(400).json({ error: 'Dados inválidos.', details: error.issues.map(i => i.message) });
   if (error.type === 'entity.too.large') return res.status(413).json({ error: 'Arquivo muito grande.' });

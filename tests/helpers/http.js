@@ -22,6 +22,7 @@ export function request(app, url, options = {}) {
     res.on('error', reject);
     if (options.body) req.push(options.body);
     req.push(null);
-    app.handle(req, res);
+    if (typeof app.handle === 'function') app.handle(req, res);
+    else app(req, res);
   });
 }
