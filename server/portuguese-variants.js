@@ -44,11 +44,12 @@ export function portugueseVariants(question) {
     const setting = settings[Math.floor(i/(items.length*actors.length))%settings.length];
     const situation = situations[Math.floor(i/(items.length*actors.length*settings.length))%situations.length];
     const context = `${actor}, ${setting}, ${situation}`;
-    const prompt = topic === 'interpretacao'
+    const promptBase = topic === 'interpretacao'
       ? `Leia o trecho: “${actor} ${verb} ${object} ${setting}, ${situation}.” Considerando exclusivamente a informação expressa, assinale a conclusão necessariamente verdadeira.`
       : topic === 'concordancia' || topic === 'pronomes' || topic === 'conectivos'
         ? `Em um exercício de revisão realizado por ${context}, qual alternativa está de acordo com a norma-padrão e com a relação sintática indicada?`
         : `Ao redigir um registro ${context}, a candidata empregou o verbo “${verb}” em referência a “${object}”. Qual construção respeita a norma-padrão?`;
+    const prompt = `${promptBase} (Situação ${i % items.length + 1}.)`;
     const answers = [correct,...wrong];
     const rotation = i % 4;
     const options = answers.slice(rotation).concat(answers.slice(0,rotation));
