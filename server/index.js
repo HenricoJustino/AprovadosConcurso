@@ -41,6 +41,21 @@ app.get('/api/inventory', async (req, res, next) => {
     res.json(data);
   } catch (error) { next(error); }
 });
+app.get('/api/question-counts', async (req, res, next) => {
+  try {
+    // Counts use the authenticated student's RLS context and reflect only published questions.
+    const counts = {};
+    for (const topic of topics) {
+      const { count, error } = await req.db.from('questions')
+        .select('id', { count: 'exact', head: true })
+        .eq('board_id', 'vunesp').eq('kind', 'basic')
+        .eq('status', 'published').eq('topic_id', topic.id);
+      if (error) throw error;
+      counts[topic.id] = count || 0;
+    }
+    res.json({ topics: counts });
+  } catch (error) { next(error); }
+});
 app.get('/api/preferences', async (req, res, next) => {
   try {
     const { data, error } = await req.db.from('student_settings').select('daily_goal').eq('user_id', req.user.id).maybeSingle();
