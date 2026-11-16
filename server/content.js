@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import { topics } from '../shared/catalog.js';
+import { portugueseVariants } from './portuguese-variants.js';
 
 const makeId = value => createHash('sha256').update(value).digest('hex').slice(0, 32);
 function question(topicId, prompt, options, correct, explanation, extra = {}) {
@@ -93,6 +94,7 @@ export function generateQuestions() {
     const shirts = 2 + i % 50, pants = 2 + Math.floor(i / 50);
     all.push(numeric('contagem', `Há ${shirts} modelos de camiseta e ${pants} modelos de calça. Quantos conjuntos diferentes podem ser formados escolhendo uma camiseta e uma calça, sem restrições?`, shirts * pants, `Pelo princípio multiplicativo: ${shirts} possibilidades de camiseta × ${pants} de calça = ${shirts * pants} conjuntos.`, i + 3));
   }
+  all.push(...portugueseVariants(question));
   return all;
 }
 export const questions = generateQuestions();
