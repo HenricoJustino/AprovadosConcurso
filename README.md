@@ -61,6 +61,12 @@ São **10.000 variações de 8 modelos**, com enunciados únicos e gabarito calc
 
 Os testes recalculam independentemente as 10 mil respostas a partir dos dados do enunciado, verificam duplicações e integridade dos vínculos. Isso verifica o cálculo, não substitui revisão pedagógica.
 
+## Atualização do acervo publicado
+
+O redeploy da Vercel **não executa o seed**. Após atualizar o código, rode `npm.cmd run seed` em um ambiente administrativo com `SUPABASE_URL` e `SUPABASE_SERVICE_ROLE_KEY` configurados. A importação adiciona as 7.500 questões de Português ao banco; o site consulta as contagens reais por assunto. Nunca configure `SUPABASE_SERVICE_ROLE_KEY` em variáveis `VITE_` nem exponha a chave ao navegador.
+
+A jornada usa o histórico de questões distintas da conta para pular itens respondidos, inclusive depois de novo login. Revisões permanecem acessíveis pelo caderno de erros.
+
 ## Conectar ao Supabase
 
 1. Crie seu projeto Supabase.
