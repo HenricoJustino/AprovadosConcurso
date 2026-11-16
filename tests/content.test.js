@@ -4,11 +4,12 @@ import { generateQuestions, questions, publicQuestion } from '../server/content.
 import { topics } from '../shared/catalog.js';
 
 test('acervo contém 10 mil variações e questões introdutórias, sem enunciados duplicados', () => {
-  assert.equal(questions.length, 10053);
+  assert.equal(questions.length, 17553);
   assert.equal(questions.filter(q => q.editorial_status === 'generated').length, 10000);
   assert.equal(new Set(questions.map(q => q.id)).size, questions.length);
   assert.equal(new Set(questions.map(q => q.prompt)).size, questions.length);
   assert.ok(questions.every(q => q.kind === 'basic'));
+  assert.equal(questions.filter(q => q.subject_id === 'portugues').length, 7533);
   assert.deepEqual(generateQuestions().map(q => q.id), questions.map(q => q.id));
 });
 test('todas as questões possuem alternativas válidas, explicação e vínculo com a matéria', () => {
