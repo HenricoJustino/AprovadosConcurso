@@ -6,7 +6,7 @@ Sistema local em **Vue 3 + Vite**, **Node.js + Express** e **Supabase (PostgreSQ
 
 **Verificar a configuração preenchida no `.env`:** `npm.cmd run check:supabase`. A API aceita chave pública nova `SUPABASE_PUBLISHABLE_KEY` ou a chave anon legada, inclusive pelos nomes equivalentes `VITE_`. Valores reais não devem ser colocados no `.env.example` nem enviados ao GitHub.
 
-**Publicação:** o projeto inclui a API Node em `api/index.js` e o roteamento da Vercel. Veja [publicacao.md](docs/publicacao.md) para configurar o site completo; publicar apenas `dist` não executa a API. O acervo de 10.053 questões já foi migrado ao projeto Supabase desta instalação e verificado contra a fonte local.
+**Publicação:** o projeto inclui a API Node em `api/index.js` e o roteamento da Vercel. Veja [publicacao.md](docs/publicacao.md) para configurar o site completo; publicar apenas `dist` não executa a API. O acervo de 17.553 questões já foi migrado ao projeto Supabase desta instalação e verificado contra a fonte local.
 
 ## Iniciar no Windows
 
@@ -46,18 +46,18 @@ Acesse **Meu perfil** no menu ou `/perfil`. Nome, telefone opcional, cidade opci
 
 O dashboard considera todas as tentativas, incluindo revisões. A liberação da etapa oficial usa questões distintas. O tempo é declarado pelo navegador e não é uma métrica antifraude. A meta diária pertence à conta e é sincronizada no banco.
 
-## Acervo inicial: 10.053 questões básicas
+## Acervo inicial: 17.553 questões básicas
 
 | Conteúdo | Quantidade | Origem |
 | --- | ---: | --- |
 | Matemática: operações, porcentagem, equações, médias e proporções | 7.500 | Exercícios parametrizados de 6 modelos |
 | Lógica: sequências e princípio multiplicativo | 2.500 | Exercícios parametrizados de 2 modelos |
-| Português | 33 | Questões autorais introdutórias |
+| Português | 7.533 | 33 questões introdutórias e 7.500 variações contextuais de 30 modelos |
 | Proposições lógicas | 5 | Questões autorais introdutórias |
 | Informática | 15 | Questões autorais introdutórias |
 | **Oficiais Vunesp já carregadas** | **0** | Aguardam documentos e revisão |
 
-São **10.000 variações de 8 modelos**, com enunciados únicos e gabarito calculado, mais 53 introdutórias. Não são 10.000 conteúdos diferentes nem 10.000 questões oficiais. A distribuição inicial é concentrada em matemática/lógica; não representa a distribuição de nenhum edital. O conteúdo autoral está identificado como curadoria inicial ou parametrizado e ainda demanda revisão pedagógica independente. Não há garantia de cobertura completa de edital.
+São **10.000 variações de 8 modelos**, com enunciados únicos e gabarito calculado, mais 7.500 variações de Português e 53 introdutórias. Não são 10.000 conteúdos diferentes nem 10.000 questões oficiais. A distribuição inclui 7.533 questões de Português e 7.500 de Matemática, além de Lógica e Informática; não representa a distribuição de nenhum edital. As variações de Português são contextualizações parametrizadas de 30 modelos e não equivalem a 7.500 itens editorialmente independentes. O conteúdo autoral está identificado como curadoria inicial ou parametrizado e ainda demanda revisão pedagógica independente. Não há garantia de cobertura completa de edital.
 
 Os testes recalculam independentemente as 10 mil respostas a partir dos dados do enunciado, verificam duplicações e integridade dos vínculos. Isso verifica o cálculo, não substitui revisão pedagógica.
 
@@ -66,7 +66,7 @@ Os testes recalculam independentemente as 10 mil respostas a partir dos dados do
 1. Crie seu projeto Supabase.
 2. Em banco novo, execute `supabase/migrations/001_initial.sql` **uma vez**, depois `002_student_settings.sql` e `supabase/security.sql`. Não reexecute a estrutura inicial em um banco que já tem essas tabelas.
 3. Em `.env`, configure `SUPABASE_URL` e `SUPABASE_PUBLISHABLE_KEY` ou `SUPABASE_ANON_KEY`. Para popular/importar questões, configure também `SUPABASE_SERVICE_ROLE_KEY`.
-4. Execute `npm.cmd run seed`. As 10.053 questões, matérias e conceitos serão enviados em lotes de 200. O seed pode ser repetido: IDs são determinísticos e respostas existentes não são apagadas. Cada lote é atômico, não o seed inteiro; após falha, execute novamente.
+4. Execute `npm.cmd run seed`. As 17.553 questões, matérias e conceitos serão enviados em lotes de 200. O seed pode ser repetido: IDs são determinísticos e respostas existentes não são apagadas. Cada lote é atômico, não o seed inteiro; após falha, execute novamente.
 5. Altere `APP_MODE=supabase` e reinicie `npm.cmd run dev`.
 6. Cadastre uma conta pela interface. Se a confirmação por e-mail estiver ativa, confirme antes de entrar. Configure as URLs de redirecionamento e os e-mails no painel do Supabase conforme o ambiente.
 
