@@ -156,23 +156,18 @@ function openTopic(id) {
 }
 function selectSubject(id) { selectedSubject.value = id; selectedTopic.value = topics.value.find(t => t.subject_id === id)?.id; lessonOpen.value = false; query.value = ''; }
 function resetQuestion() { selectedOption.value = null; result.value = null; startedAt.value = Date.now(); requestId.value = crypto.randomUUID(); }
-async function loadUnansweredPage(topicId, kind, initialOffset = 0) {
-  let nextOffset = initialOffset;
-  while (true) {
-    const data = await api(`/questions?topic=${encodeURIComponent(topicId)}&kind=${kind}&offset=${nextOffset}`);
-    const nextIndex = data.questions.findIndex(q => !answeredIds.value.has(q.id));
-    if (nextIndex >= 0) return { questions: data.questions, total: data.total, offset: nextOffset, index: nextIndex };
-    if (!data.questions.length || nextOffset + data.questions.length >= data.total) return { questions: [], total: data.total, offset: nextOffset, index: 0 };
-    nextOffset += data.questions.length;
-  }
+async function loadPracticePage(topicId) {
+  const data = await api("/questions?order=mixed&topic=" + encodeURIComponent(topicId));
+  return { ...data, index: data.questions.findIndex(q => !answeredIds.value.has(q.id)) };
 }
 async function startPractice() {
   const scope = sessionScope.capture();
   loadingQuestions.value = true; error.value = ''; reviewSession.value = false;
   try {
-    const data = await loadUnansweredPage(selectedTopic.value, 'basic');
+    const data = await loadPracticePage(selectedTopic.value);
     if (!sessionScope.isCurrent(scope)) return;
-    questionItems.value = data.questions; questionTotal.value = data.total; questionIndex.value = data.index; offset.value = data.offset;
+    questionItems.value = data.index < 0 ? [] : data.questions; questionTotal.value = data.total;
+    questionIndex.value = Math.max(0, data.index); offset.value = data.offset;
     selectedKind.value = 'basic'; sessionAnswers.value = 0; resetQuestion(); navigate('study');
   } catch (e) { if (sessionScope.isCurrent(scope)) error.value = e.message; }
   finally { if (sessionScope.isCurrent(scope)) loadingQuestions.value = false; }
@@ -196,9 +191,9 @@ async function nextQuestion() {
   const scope = sessionScope.capture();
   loadingQuestions.value = true;
   try {
-    const data = await loadUnansweredPage(selectedTopic.value, selectedKind.value, offset.value + questionItems.value.length);
+    const data = await loadPracticePage(selectedTopic.value);
     if (!sessionScope.isCurrent(scope)) return;
-    if (data.questions.length) {
+    if (data.index >= 0) {
       questionItems.value = data.questions; questionTotal.value = data.total;
       offset.value = data.offset; questionIndex.value = data.index; resetQuestion();
     } else {

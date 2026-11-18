@@ -8,6 +8,7 @@ import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { boards, subjects, topics, officialSources } from '../shared/catalog.js';
 import { getDatabaseConfig, validateDatabaseConfig } from './config.js';
+import { loadMixedPractice } from './practice.js';
 
 export const app = express();
 const databaseConfig = getDatabaseConfig();
@@ -108,10 +109,14 @@ app.put('/api/preferences', async (req, res, next) => {
     res.json({ dailyGoal: data.daily_goal });
   } catch (error) { next(error); }
 });
-const filterSchema = z.object({ topic: z.string().optional(), subject: z.string().optional(), kind: z.enum(['basic', 'official']).default('basic'), offset: z.coerce.number().int().min(0).max(1000000).default(0) });
+const filterSchema = z.object({ topic: z.string().optional(), subject: z.string().optional(), kind: z.enum(['basic', 'official']).default('basic'), order: z.enum(['id', 'mixed']).default('id'), offset: z.coerce.number().int().min(0).max(1000000).default(0) });
 app.get('/api/questions', async (req, res, next) => {
   try {
     const filter = filterSchema.parse(req.query);
+    if (filter.order === 'mixed') {
+      if (filter.kind !== 'basic' || !filter.topic) return res.status(400).json({ error: 'Escolha um assunto para praticar.' });
+      return res.json(await loadMixedPractice(req.db, req.user.id, filter));
+    }
     let query = req.db.from('questions').select('*', { count: 'exact' }).eq('board_id', 'vunesp').eq('kind', filter.kind).eq('status', 'published').order('id').range(filter.offset, filter.offset + 19);
     if (filter.topic) query = query.eq('topic_id', filter.topic);
     if (filter.subject) query = query.eq('subject_id', filter.subject);
