@@ -6,6 +6,7 @@ import { summarize } from '../shared/progress.js';
 import { signInWithGoogle, callbackError, createSessionScope } from '../shared/auth.js';
 import LoginPage from './components/LoginPage.vue';
 import StudentProfile from './components/StudentProfile.vue';
+import ExamPractice from './components/ExamPractice.vue';
 import { boards as initialBoards, subjects as initialSubjects, topics as initialTopics, officialSources as initialSources } from '../shared/catalog.js';
 
 const route = ref('login'), mobileMenu = ref(false), catalog = ref({ boards: initialBoards, subjects: initialSubjects, topics: initialTopics, officialSources: initialSources }), config = ref(null), inventory = ref(null);
@@ -18,6 +19,7 @@ const googleBusy = ref(false), savingGoal = ref(false), accountLoading = ref(fal
 const sessionScope = createSessionScope();
 let authSubscription;
 const dailyGoal = ref(20);
+const examReviewTarget = ref(null);
 const names = { dashboard: 'Visão geral', boards: 'Bancas e matérias', questions: 'Banco de questões', review: 'Caderno de erros', library: 'Acervo e fontes', settings: 'Minha preparação', study: 'Sua sessão de estudo' };
 const iconMap = { book: BookOpen, calculator: Calculator, brain: Brain, monitor: Monitor };
 names.login = 'Entrar na minha conta';
@@ -53,6 +55,7 @@ const recommendation = computed(() => {
   return practiced.sort((a, b) => topicState(a.id).rate - topicState(b.id).rate)[0] || topics.value.find(t => !topicState(t.id).unlocked) || topics.value[0];
 });
 function navigate(to) { if (!user.value) to = 'login'; route.value = to; window.history.replaceState({}, '', to === 'login' ? '/login' : to === 'profile' ? '/perfil' : '/'); mobileMenu.value = false; error.value = ''; notice.value = ''; window.scrollTo({ top: 0, behavior: 'smooth' }); }
+function recordExamAttempt(a) { if (!attempts.value.some(old => old.request_id === a.request_id)) attempts.value.push(a); }
 function subjectStats(id) {
   const a = attempts.value.filter(a => a.subject_id === id);
   return { total: a.length, rate: a.length ? Math.round(a.filter(a => a.correct).length / a.length * 100) : 0, mastered: topics.value.filter(t => t.subject_id === id && topicState(t.id).unlocked).length };
@@ -212,6 +215,7 @@ async function reviewAttempt(a) {
   try {
     const data = await api(`/questions/${a.question_id}`);
     if (!sessionScope.isCurrent(scope)) return;
+    if(data.exam_id) { examReviewTarget.value={examId:data.exam_id,questionId:data.id}; navigate('library'); return; }
     selectedTopic.value = a.topic_id; selectedSubject.value = a.subject_id; selectedKind.value = a.kind;
     questionItems.value = [data]; questionTotal.value = 1; questionIndex.value = 0; offset.value = 0; sessionAnswers.value = 0; reviewSession.value = true;
     resetQuestion(); navigate('study');
@@ -291,6 +295,7 @@ function reloadApp() { window.location.reload(); }
           </template>
 
           <template v-if="route === 'questions'">
+            <ExamPractice :attempts="attempts" @attempt="recordExamAttempt"/>
             <div class="page-heading"><div><div class="eyebrow">PRÁTICA COM PROPÓSITO</div><h1>Uma questão de cada vez<span class="green-dot">.</span></h1><p>{{ number(inventory?.basic) }} exercícios básicos. Filtre por matéria e escolha o assunto.</p></div></div>
             <div class="inventory-banner"><Library :size="21"/><p><strong>Acervo transparente:</strong> {{ number(inventory?.generated) }} exercícios parametrizados, {{ number(inventory?.curated) }} questões autorais adicionais e {{ inventory?.official }} oficiais verificadas.</p></div>
             <section class="panel filters"><label>Matéria<select :value="selectedSubject" @change="selectSubject($event.target.value)"><option v-for="s in subjects" :key="s.id" :value="s.id">{{ s.name }}</option></select></label><label>Buscar assunto<div class="search-input"><Search :size="17"/><input v-model="query" placeholder="Ex.: regência verbal"></div></label></section>
@@ -311,6 +316,7 @@ function reloadApp() { window.location.reload(); }
           </template>
 
           <template v-if="route === 'library'">
+            <ExamPractice :attempts="attempts" :target="examReviewTarget" @opened="examReviewTarget=null" @attempt="recordExamAttempt"/>
             <div class="page-heading"><div><div class="eyebrow">ORIGEM IMPORTA</div><h1>Um acervo em que você pode confiar<span class="green-dot">.</span></h1><p>Conteúdo autoral e questões oficiais têm origens e etapas de revisão diferentes.</p></div></div>
             <div class="library-summary"><div class="panel"><span class="metric-icon sage"><Calculator :size="22"/></span><strong>{{ number(inventory?.generated) }}</strong><h3>Exercícios parametrizados</h3><p>Variações de 8 modelos de matemática e lógica, com gabaritos calculados. Não são 10 mil conceitos diferentes nem questões da Vunesp.</p></div><div class="panel"><span class="metric-icon blue"><BookOpen :size="22"/></span><strong>{{ inventory?.curated || 0 }}</strong><h3>Questões introdutórias</h3><p>Português, informática e proposições. Conteúdo autoral de curadoria inicial, sujeito à revisão pedagógica.</p></div><div class="panel"><span class="metric-icon sand"><GraduationCap :size="23"/></span><strong>{{ inventory?.official || 0 }}</strong><h3>Oficiais verificadas</h3><p>Somente provas aplicadas, com identificação do caderno, da questão, da aplicação e do gabarito definitivo.</p></div></div>
             <section class="panel sources-panel"><div class="panel-heading"><div><h2>Fontes oficiais para consulta</h2><p>A página do concurso é uma referência de origem; não significa que suas questões já foram importadas.</p></div></div><a v-for="source in catalog.officialSources" :key="source.url" :href="source.url" target="_blank" rel="noopener noreferrer" class="source-row"><span class="large-board-emblem">V</span><div><h3>{{ source.title }}</h3><p>{{ source.note }}</p><small>{{ source.url }}</small></div><ExternalLink :size="20"/></a></section>

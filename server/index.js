@@ -41,6 +41,42 @@ app.get('/api/inventory', async (req, res, next) => {
     res.json(data);
   } catch (error) { next(error); }
 });
+// Applied exams are a separate collection from the basic learning path.
+app.get('/api/exams', async (req, res, next) => {
+  try {
+    const { data, error } = await req.db.from('official_exams').select('*').eq('status','published').order('application_date',{ascending:false}).order('id');
+    if (error?.code === 'PGRST205' || error?.code === '42P01') return res.json({exams:[]});
+    if (error) throw error;
+    res.json({exams:data});
+  } catch(error) { next(error); }
+});
+const examId = z.string().regex(/^[A-Za-z0-9-]{1,150}$/);
+app.get('/api/exams/:exam/questions', async (req,res,next) => {
+  try {
+    const id = examId.parse(req.params.exam);
+    const {data:exam,error:examError} = await req.db.from('official_exams').select('id,total_questions').eq('id',id).eq('status','published').maybeSingle();
+    if (examError) throw examError;
+    if (!exam) return res.status(404).json({error:'Prova não disponível.'});
+    const rows=[];
+    for (let offset=0;offset<exam.total_questions;offset+=500) {
+      const {data,error} = await req.db.from('questions').select('*').eq('exam_id',id).eq('kind','official').eq('status','published').order('question_number').range(offset,offset+499);
+      if(error) throw error;
+      rows.push(...data);
+      if(data.length<500) break;
+    }
+    const names={portugues:'Língua Portuguesa',matematica:'Matemática',gerais:'Conhecimentos Gerais',informatica:'Informática',administracao:'Administração Pública'};
+    res.json({questions:rows.map(q=>({...q,subject_name:names[q.subject_id] || q.subject_id}))});
+  } catch(error) { next(error); }
+});
+app.get('/api/exams/:exam/pages/:page', async(req,res,next)=>{
+  try {
+    const id=examId.parse(req.params.exam), page=z.coerce.number().int().min(1).max(1000).parse(req.params.page);
+    const {data,error}=await req.db.from('exam_pages').select('page_number,image_data,alt').eq('exam_id',id).eq('page_number',page).maybeSingle();
+    if(error) throw error;
+    if(!data) return res.status(404).json({error:'Página original não disponível.'});
+    res.set('Cache-Control','private, max-age=3600').json(data);
+  } catch(error) { next(error); }
+});
 app.get('/api/question-counts', async (req, res, next) => {
   try {
     // Counts use the authenticated student's RLS context and reflect only published questions.
