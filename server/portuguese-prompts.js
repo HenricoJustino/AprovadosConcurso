@@ -37,6 +37,7 @@ export function presentPortugueseQuestion(question) {
   const model = Number(marker?.[1]);
   const instruction = instructions[model - 1];
   if (!instruction) return question;
+  if (model <= 5) return { ...question, prompt: instruction };
 
   if (model >= 26) {
     const passage = question.prompt.match(/^Leia o trecho: [“"]([^”"]+)[”"]/u)?.[1];
@@ -59,4 +60,9 @@ export function presentPortugueseQuestion(question) {
       ? `${where}, ${name} revisou um texto ${when}.`
       : `${name} trabalhou na revisão de um texto ${place} ${when}.`;
   return { ...question, prompt: `${setting} ${instruction}` };
+}
+
+export function regencyPracticeIdentity(question) {
+  const model = question.generator_version === 'pt-1' && question.prompt.match(/\(Situação ([1-5])\.\)$/u);
+  return model ? `regency-model-${model[1]}` : question.id;
 }

@@ -51,19 +51,26 @@ test('a jornada intercala modelos e pula o histórico entre lotes e sessões', a
     const first = await response.json();
     assert.equal(first.questions.length, 20);
     assert.ok(first.questions.every(q => !/\(Situação \d+\.\)/u.test(q.prompt)));
-    assert.equal(first.total, questions.filter(q => q.topic_id === topic).length);
+    const rawTotal = questions.filter(q => q.topic_id === topic).length;
+    assert.equal(first.total, topic === 'regencia' ? rawTotal - 1245 : rawTotal);
     assert.ok(seenTopics.has(topic), 'inclui questões além do limite inicial do banco');
     const firstFive = first.questions.slice(0, 5).map(family);
     assert.equal(new Set(firstFive).size, 5);
-    first.questions.forEach((q, i) => history.push({
-      id: String(history.length), question_id: q.id, topic_id: topic,
-      created_at: new Date(i * 1000).toISOString()
-    }));
+    first.questions.forEach((q, i) => {
+      // A tentativa antiga pode apontar para qualquer variante da mesma questão.
+      const alias = topic === 'regencia' && questions.find(row =>
+        row.topic_id === topic && row.id !== q.id && family(row) === family(q));
+      history.push({
+        id: String(history.length), question_id: alias ? alias.id : q.id, topic_id: topic,
+        created_at: new Date(i * 1000).toISOString()
+      });
+    });
     const second = await (await request(app, endpoint, asStudent)).json();
     assert.equal(second.offset, 20);
     assert.equal(second.total, first.total);
     const ids = [...first.questions, ...second.questions].map(q => q.id);
-    assert.equal(new Set(ids).size, 40);
+    assert.equal(new Set(ids).size, Math.min(40, first.total));
+    if (topic === 'regencia') assert.equal(new Set([...first.questions, ...second.questions].map(q => q.prompt)).size, first.total);
     const models = [first.questions.at(-1), ...second.questions].map(family);
     assert.ok(models.every((model, i) => i === 0 || models[i - 1] !== model));
     const resumed = await (await request(app, endpoint, asStudent)).json();

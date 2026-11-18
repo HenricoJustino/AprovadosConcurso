@@ -8,7 +8,7 @@ import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { boards, subjects, topics, officialSources } from '../shared/catalog.js';
 import { getDatabaseConfig, validateDatabaseConfig } from './config.js';
-import { loadMixedPractice } from './practice.js';
+import { loadMixedPractice, regencyInventory } from './practice.js';
 import { presentPortugueseQuestion } from './portuguese-prompts.js';
 
 export const app = express();
@@ -83,7 +83,12 @@ app.get('/api/question-counts', async (req, res, next) => {
   try {
     // Counts use the authenticated student's RLS context and reflect only published questions.
     const counts = {};
+    const regency = await regencyInventory(req.db);
     for (const topic of topics) {
+      if (topic.id === 'regencia') {
+        counts[topic.id] = regency.total;
+        continue;
+      }
       const { count, error } = await req.db.from('questions')
         .select('id', { count: 'exact', head: true })
         .eq('board_id', 'vunesp').eq('kind', 'basic')
@@ -91,7 +96,7 @@ app.get('/api/question-counts', async (req, res, next) => {
       if (error) throw error;
       counts[topic.id] = count || 0;
     }
-    res.json({ topics: counts });
+    res.json({ topics: counts, regencyAliases: regency.aliases });
   } catch (error) { next(error); }
 });
 app.get('/api/preferences', async (req, res, next) => {

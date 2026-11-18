@@ -7,6 +7,7 @@ import { signInWithGoogle, callbackError, createSessionScope } from '../shared/a
 import LoginPage from './components/LoginPage.vue';
 import StudentProfile from './components/StudentProfile.vue';
 import ExamPractice from './components/ExamPractice.vue';
+import { regencyLesson } from '../shared/regency.js';
 import { boards as initialBoards, subjects as initialSubjects, topics as initialTopics, officialSources as initialSources } from '../shared/catalog.js';
 
 const route = ref('login'), mobileMenu = ref(false), catalog = ref({ boards: initialBoards, subjects: initialSubjects, topics: initialTopics, officialSources: initialSources }), config = ref(null), inventory = ref(null);
@@ -34,7 +35,11 @@ const topic = computed(() => topics.value.find(t => t.id === selectedTopic.value
 const currentQuestion = computed(() => questionItems.value[questionIndex.value]);
 const topicState = id => stats.value.topicProgress[id] || { answered: 0, correct: 0, rate: 0, unlocked: false };
 const answeredIds = computed(() => new Set(attempts.value.map(a => a.question_id)));
-const remainingInTopic = id => Math.max(0, (topicCounts.value[id] || 0) - new Set(attempts.value.filter(a => a.topic_id === id && a.kind === 'basic').map(a => a.question_id)).size);
+const regencyAliases = ref({});
+const remainingInTopic = id => Math.max(0, (topicCounts.value[id] || 0) - new Set(
+  attempts.value.filter(a => a.topic_id === id && a.kind === 'basic')
+    .map(a => id === 'regencia' ? regencyAliases.value[a.question_id] ?? a.question_id : a.question_id)
+).size);
 const topicCounts = ref({});
 const subjectCount = id => topics.value.filter(t => t.subject_id === id).reduce((sum,t) => sum + (topicCounts.value[t.id] || 0), 0);
 const displayName = computed(() => {
@@ -68,6 +73,7 @@ async function refreshData() {
   const counts = await api('/question-counts');
   if (!sessionScope.isCurrent(scope)) return;
   topicCounts.value = counts.topics || {};
+  regencyAliases.value = counts.regencyAliases || {};
   const preferences = await api('/preferences');
   if (!sessionScope.isCurrent(scope)) return;
   dailyGoal.value = preferences.dailyGoal;
@@ -284,7 +290,12 @@ function reloadApp() { window.location.reload(); }
             <section class="board-banner"><span class="large-board-emblem">V</span><div><div class="eyebrow">BANCA ATIVA</div><h2>Vunesp</h2><p>Fundação para o Vestibular da Unesp</p></div><span class="subtle-pill"><CheckCircle2 :size="14"/>Trilhas disponíveis</span><span class="muted small future-boards">Novas bancas, em breve</span></section>
             <div class="subject-tabs" role="group" aria-label="Matéria"><button v-for="subject in subjects" :key="subject.id" :class="{ active: selectedSubject === subject.id }" @click="selectSubject(subject.id)"><component :is="iconMap[subject.icon]" :size="18"/>{{ subject.short }} <small>({{ number(subjectCount(subject.id)) }})</small></button></div>
             <div class="learning-layout"><section class="panel topic-list"><div class="panel-heading"><div><h2>{{ currentSubject?.name }}</h2><p>{{ subjectTopics.length }} assuntos · {{ number(subjectCount(selectedSubject)) }} questões disponíveis</p></div></div><button v-for="(t, i) in subjectTopics" :key="t.id" class="topic-item" :class="{ selected: selectedTopic === t.id }" @click="selectedTopic = t.id; lessonOpen = true; lessonRead = false"><span class="topic-number" :class="{ completed: topicState(t.id).unlocked }"><Check v-if="topicState(t.id).unlocked" :size="18"/><template v-else>{{ String(i + 1).padStart(2, '0') }}</template></span><span><strong>{{ t.name }}</strong><small>{{ number(topicCounts[t.id] || 0) }} questões · {{ number(remainingInTopic(t.id)) }} inéditas</small><small>{{ topicState(t.id).answered ? `${topicState(t.id).answered} questões distintas · ${topicState(t.id).rate}% de acerto` : 'Conceito + exemplos + prática' }}</small></span><ChevronRight :size="16"/></button></section>
-              <section class="panel lesson-panel" v-if="topic"><div class="lesson-step"><span class="step-badge">01</span><span>ENTENDA O CONCEITO</span><span class="reading-time">Leitura rápida</span></div><h2>{{ topic.name }}</h2><p class="lesson-concept">{{ topic.concept }}</p><div class="example-box"><span class="tiny-label">NA PRÁTICA</span><p>{{ topic.example }}</p></div><div class="tip-box"><span>✦</span><p>{{ topic.tip }}</p></div><div class="lesson-divider"></div><div class="lesson-step"><span class="step-badge">02</span><span>CONSTRUA SUA BASE</span></div><p class="muted">Responda pelo menos 5 questões distintas e alcance 70% de acerto para consolidar a base deste assunto. Repetições não aumentam a contagem de questões distintas.</p><label class="read-check"><input v-model="lessonRead" type="checkbox">Li o conceito e estou pronto para praticar.</label><button class="button primary" :disabled="!lessonRead || loadingQuestions" @click="startPractice()">{{ loadingQuestions ? 'Preparando…' : remainingInTopic(topic.id) ? 'Continuar de onde parei' : 'Revisar conteúdo' }}<ArrowRight :size="17"/></button><div class="official-step">
+              <section class="panel lesson-panel" v-if="topic"><div class="lesson-step"><span class="step-badge">01</span><span>ENTENDA O CONCEITO</span><span class="reading-time">Leitura rápida</span></div><h2>{{ topic.name }}</h2><p class="lesson-concept">{{ topic.concept }}</p><template v-if="topic.id === 'regencia'">
+                  <div v-for="entry in regencyLesson" :key="entry.label" class="example-box">
+                    <h3>{{ entry.label }}</h3><p>{{ entry.rule }}</p><p><em>{{ entry.example }}</em></p>
+                  </div>
+                </template>
+                <div v-else class="example-box"><span class="tiny-label">NA PRÁTICA</span><p>{{ topic.example }}</p></div><div class="tip-box"><span>✦</span><p>{{ topic.tip }}</p></div><div class="lesson-divider"></div><div class="lesson-step"><span class="step-badge">02</span><span>CONSTRUA SUA BASE</span></div><p class="muted">Responda pelo menos 5 questões distintas e alcance 70% de acerto para consolidar a base deste assunto. Repetições não aumentam a contagem de questões distintas.</p><label class="read-check"><input v-model="lessonRead" type="checkbox">Li o conceito e estou pronto para praticar.</label><button class="button primary" :disabled="!lessonRead || loadingQuestions" @click="startPractice()">{{ loadingQuestions ? 'Preparando…' : remainingInTopic(topic.id) ? 'Continuar de onde parei' : 'Revisar conteúdo' }}<ArrowRight :size="17"/></button><div class="official-step">
                   <span class="metric-icon sage"><Files :size="20"/></span>
                   <div><h3>03 · Questões oficiais Vunesp</h3><p>Escolha um caderno para praticar ou baixar a prova e o gabarito.</p></div>
                   <button class="text-button" @click="navigate('exams')">Acessar provas<ArrowRight :size="15"/></button>

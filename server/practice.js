@@ -1,3 +1,5 @@
+import { regencyPracticeIdentity } from './portuguese-prompts.js';
+
 const SCAN_SIZE = 1000;
 const PRACTICE_SIZE = 20;
 
@@ -56,19 +58,47 @@ export function mixPracticeQuestions(questions, attempts, limit = PRACTICE_SIZE)
   return { ids, remaining };
 }
 
-export async function loadMixedPractice(db, userId, { topic, subject }) {
-  const topicQuestions = columns => {
+function practiceQuestions(db, topic, subject) {
+  return columns => {
     const query = db.from('questions').select(columns)
       .eq('board_id', 'vunesp').eq('kind', 'basic').eq('status', 'published').eq('topic_id', topic);
     return subject ? query.eq('subject_id', subject) : query;
   };
+}
+
+const practiceFields = 'id,prompt,generator_version';
+
+function groupRegency(candidates) {
+  const representatives = new Map();
+  const aliases = new Map();
+  for (const question of candidates) {
+    const key = regencyPracticeIdentity(question);
+    if (!representatives.has(key)) representatives.set(key, question);
+    if (key !== question.id) aliases.set(question.id, representatives.get(key).id);
+  }
+  return { candidates: [...representatives.values()], aliases };
+}
+
+export async function regencyInventory(db) {
+  const query = practiceQuestions(db, 'regencia');
+  const groups = groupRegency(await readRows(() => query(practiceFields)));
+  return { total: groups.candidates.length, aliases: Object.fromEntries(groups.aliases) };
+}
+
+export async function loadMixedPractice(db, userId, { topic, subject }) {
+  const topicQuestions = practiceQuestions(db, topic, subject);
   const [candidates, attempts] = await Promise.all([
-    readRows(() => topicQuestions('id,prompt,generator_version')),
+    readRows(() => topicQuestions(practiceFields)),
     readRows(() => db.from('attempts').select('id,question_id,created_at')
       .eq('user_id', userId).eq('topic_id', topic).eq('kind', 'basic'))
   ]);
-  const { ids, remaining } = mixPracticeQuestions(candidates, attempts);
-  const total = candidates.length;
+  const groups = topic === 'regencia' ? groupRegency(candidates) : null;
+  const pool = groups?.candidates ?? candidates;
+  const history = groups ? attempts.map(attempt => ({
+    ...attempt, question_id: groups.aliases.get(attempt.question_id) ?? attempt.question_id
+  })) : attempts;
+  const { ids, remaining } = mixPracticeQuestions(pool, history);
+  const total = pool.length;
   const offset = total - remaining;
   if (!ids.length) return { questions: [], total, offset };
 
@@ -77,3 +107,4 @@ export async function loadMixedPractice(db, userId, { topic, subject }) {
   const byId = new Map(data.map(question => [question.id, question]));
   return { questions: ids.map(id => byId.get(id)).filter(Boolean), total, offset };
 }
+
