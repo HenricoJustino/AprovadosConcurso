@@ -7,6 +7,7 @@
     { "source": "/api/:path*", "destination": "/api/index?__route=:path*" },
     { "source": "/auth/callback", "destination": "/index.html" },
     { "source": "/login", "destination": "/index.html" },
-    { "source": "/perfil", "destination": "/index.html" }
+    { "source": "/perfil", "destination": "/index.html" },
+    { "source": "/provas-e-gabaritos", "destination": "/index.html" }
   ]
 }

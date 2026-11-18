@@ -1,12 +1,13 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
+import { ArrowLeft, Download } from 'lucide-vue-next';
 import { api } from '../api.js';
 
 const props = defineProps({ attempts: { type: Array, default: () => [] }, target: {type:Object,default:null} });
 const emit = defineEmits(['attempt','opened']);
 const exams = ref([]), chosen = ref(null), questions = ref([]), current = ref(null), pages = ref([]);
 const loading = ref(false), pageLoading = ref(false), sending = ref(false), error = ref(''), result = ref(null), selected = ref(null);
-const loaded = ref(false), filter = ref(''), replay = ref(false), zoom = ref(false);
+const filter = ref(''), replay = ref(false), zoom = ref(false);
 let active = true, pageRequest = 0, requestId = crypto.randomUUID(), startedAt = Date.now();
 onBeforeUnmount(()=>{active=false;pageRequest++;pageCache.clear();});
 const answered = computed(() => new Set(props.attempts.map(a => a.question_id)));
@@ -17,7 +18,7 @@ const pageCache = new Map();
 
 async function loadExams() {
   loading.value = true; error.value = '';
-  try { const data=await api('/exams'); if(!active) return; exams.value = data.exams; loaded.value = true; }
+  try { const data=await api('/exams'); if(!active) return; exams.value = data.exams; }
   catch(e) { error.value = e.message; }
   finally { loading.value = false; }
 }
@@ -70,38 +71,42 @@ async function next() {
   await showQuestion(q || null);
 }
 function back() { pageRequest++; chosen.value = null; current.value = null; pages.value = []; error.value = ''; }
-onMounted(async()=>{
-  if(!props.target) return;
-  const target={...props.target}; emit('opened');
+async function openCatalog() {
+  const target = props.target;
   await loadExams();
-  if(!active) return;
-  const exam=exams.value.find(e=>e.id===target.examId);
-  if(exam) await choose(exam,true,target.questionId);
-  else if(!error.value) error.value='A prova desta revisão não está disponível.';
-});
+  if (!active || !target || error.value) return;
+  emit('opened');
+  const exam = exams.value.find(e => e.id === target.examId);
+  if (exam) await choose(exam, true, target.questionId);
+  else error.value = 'A prova desta revisão não está disponível.';
+}
+onMounted(openCatalog);
 </script>
 
 <template>
   <section class="panel exam-practice">
     <div class="panel-heading"><div><h2>Provas aplicadas da Vunesp</h2><p>Escolha uma aplicação e um caderno. A correção usa o gabarito correspondente, com as anulações fora da pontuação.</p></div></div>
-    <div v-if="error" class="exam-error" role="alert">{{ error }} <button class="text-button" @click="chosen ? choose(chosen,replay) : loadExams()" :disabled="loading || sending">Tentar novamente</button></div>
+    <div v-if="error" class="exam-error" role="alert">{{ error }} <button class="text-button" @click="chosen ? choose(chosen,replay) : openCatalog()" :disabled="loading || sending">Tentar novamente</button></div>
     <template v-if="!chosen">
-      <button v-if="!loaded" class="button primary" :disabled="loading" @click="loadExams">{{ loading ? 'Consultando acervo…' : 'Ver provas disponíveis' }}</button>
-      <template v-else>
+      <p v-if="loading" role="status">Carregando provas e gabaritos…</p>
+      <template v-else-if="!error || exams.length">
         <label class="exam-search">Buscar prova, cargo ou ano<input v-model="filter" placeholder="Ex.: Soldado 2025"></label>
-        <p v-if="!exams.length" class="muted">As provas aparecerão aqui quando a importação documental for concluída no banco.</p>
+        <p v-if="!exams.length" class="muted">Nenhum caderno está disponível agora.</p>
         <p v-else-if="!visibleExams.length" class="muted">Nenhuma prova corresponde à busca.</p>
         <div class="exam-grid"><article v-for="e in visibleExams" :key="e.id" class="exam-card">
           <span class="subtle-pill">{{ e.year }} · Caderno {{ e.booklet }}</span><h3>{{ e.title }}</h3>
           <p>{{ e.published_questions }} questões para praticar · {{ e.annulled_questions }} anuladas</p>
           <p class="muted">{{ e.role }}</p>
-          <button class="button primary" :disabled="loading" @click="choose(e)">Continuar prova</button>
-          <div class="exam-links"><a :href="e.exam_url" target="_blank" rel="noopener noreferrer">Caderno original</a><a :href="e.answer_key_url" target="_blank" rel="noopener noreferrer">Gabarito</a></div>
+          <button class="button primary" :disabled="loading" @click="choose(e)">Praticar prova</button>
+          <div class="exam-links">
+            <a :href="e.exam_url" target="_blank" rel="noopener noreferrer" :aria-label="'Baixar prova em PDF de ' + e.title"><Download :size="15"/>Prova (PDF)</a>
+            <a :href="e.answer_key_url" target="_blank" rel="noopener noreferrer" :aria-label="'Baixar gabarito em PDF de ' + e.title"><Download :size="15"/>Gabarito (PDF)</a>
+          </div>
         </article></div>
       </template>
     </template>
     <template v-else>
-      <button class="text-button" :disabled="loading || sending" @click="back">← Voltar às provas</button>
+      <button class="text-button" :disabled="loading || sending" @click="back"><ArrowLeft :size="16"/>Voltar às provas</button>
       <h3>{{ chosen.title }}</h3>
       <p>{{ questions.length }} questões válidas · {{ remaining }} inéditas · {{ chosen.annulled_questions }} anuladas, fora da prática</p>
       <p v-if="loading" role="status">Preparando sua prova…</p>
@@ -121,5 +126,5 @@ onMounted(async()=>{
 </template>
 
 <style scoped>
-.exam-practice{margin:24px 0;padding:24px}.exam-search{display:grid;gap:8px;margin:20px 0}.exam-search input{padding:12px;border:1px solid #dce2da;border-radius:8px;background:transparent;color:inherit}.exam-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:16px}.exam-card{padding:20px;border:1px solid #dce2da;border-radius:12px}.exam-card h3{margin:15px 0}.exam-card p{margin:12px 0}.exam-links{display:flex;gap:18px;flex-wrap:wrap;align-items:center;margin:16px 0}.exam-links a{color:#456e55;text-decoration:underline}.exam-error{padding:14px;background:#fff1ed;color:#953e2b;border-radius:8px;margin:16px 0}.exam-pages{overflow-x:auto;background:#e9ece8;border-radius:10px}.exam-pages figure{margin:0 0 16px}.exam-pages img{display:block;width:100%;height:auto;background:white}.exam-pages.zoom img{width:1400px;max-width:none}.exam-pages figcaption{text-align:center;padding:10px;color:#46564a}.exam-options{margin-top:20px}.exam-practice>.question-actions{justify-content:flex-end}.exam-practice .answer-feedback a{color:inherit;text-decoration:underline}
+.exam-practice{margin:24px 0;padding:24px}.exam-search{display:grid;gap:8px;margin:20px 0}.exam-search input{padding:12px;border:1px solid #dce2da;border-radius:8px;background:transparent;color:inherit}.exam-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:16px}.exam-card{padding:20px;border:1px solid #dce2da;border-radius:12px}.exam-card h3{margin:15px 0}.exam-card p{margin:12px 0}.exam-links{display:flex;gap:18px;flex-wrap:wrap;align-items:center;margin:16px 0}.exam-links a{display:inline-flex;align-items:center;gap:6px;color:#456e55;text-decoration:underline}.exam-error{padding:14px;background:#fff1ed;color:#953e2b;border-radius:8px;margin:16px 0}.exam-pages{overflow-x:auto;background:#e9ece8;border-radius:10px}.exam-pages figure{margin:0 0 16px}.exam-pages img{display:block;width:100%;height:auto;background:white}.exam-pages.zoom img{width:1400px;max-width:none}.exam-pages figcaption{text-align:center;padding:10px;color:#46564a}.exam-options{margin-top:20px}.exam-practice>.question-actions{justify-content:flex-end}.exam-practice .answer-feedback a{color:inherit;text-decoration:underline}
 </style>

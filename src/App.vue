@@ -1,6 +1,6 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted } from 'vue';
-import { ArrowUpRight, ArrowRight, ArrowLeft, LayoutDashboard, BookOpen, ListChecks, RotateCcw, Library, Settings2, Bell, ChevronDown, ChevronRight, Check, X, LockKeyhole, Play, Target, Timer, Flame, GraduationCap, Calculator, Brain, Monitor, Search, Menu, LogOut, CircleHelp, CheckCircle2, AlertCircle, ExternalLink, TrendingUp } from 'lucide-vue-next';
+import { ArrowUpRight, ArrowRight, ArrowLeft, LayoutDashboard, BookOpen, ListChecks, RotateCcw, Library, Files, Settings2, Bell, ChevronDown, ChevronRight, Check, X, LockKeyhole, Play, Target, Timer, Flame, GraduationCap, Calculator, Brain, Monitor, Search, Menu, LogOut, CircleHelp, CheckCircle2, AlertCircle, ExternalLink, TrendingUp } from 'lucide-vue-next';
 import { api, configure, supabase } from './api.js';
 import { summarize } from '../shared/progress.js';
 import { signInWithGoogle, callbackError, createSessionScope } from '../shared/auth.js';
@@ -20,7 +20,8 @@ const sessionScope = createSessionScope();
 let authSubscription;
 const dailyGoal = ref(20);
 const examReviewTarget = ref(null);
-const names = { dashboard: 'Visão geral', boards: 'Bancas e matérias', questions: 'Banco de questões', review: 'Caderno de erros', library: 'Acervo e fontes', settings: 'Minha preparação', study: 'Sua sessão de estudo' };
+const pagePaths = { login: '/login', profile: '/perfil', exams: '/provas-e-gabaritos' };
+const names = { dashboard: 'Visão geral', boards: 'Bancas e matérias', questions: 'Banco de questões', exams: 'Provas e gabaritos', review: 'Caderno de erros', library: 'Acervo e fontes', settings: 'Minha preparação', study: 'Sua sessão de estudo' };
 const iconMap = { book: BookOpen, calculator: Calculator, brain: Brain, monitor: Monitor };
 names.login = 'Entrar na minha conta';
 names.profile = 'Meu perfil';
@@ -36,7 +37,6 @@ const answeredIds = computed(() => new Set(attempts.value.map(a => a.question_id
 const remainingInTopic = id => Math.max(0, (topicCounts.value[id] || 0) - new Set(attempts.value.filter(a => a.topic_id === id && a.kind === 'basic').map(a => a.question_id)).size);
 const topicCounts = ref({});
 const subjectCount = id => topics.value.filter(t => t.subject_id === id).reduce((sum,t) => sum + (topicCounts.value[t.id] || 0), 0);
-const unlocked = computed(() => topicState(selectedTopic.value).unlocked);
 const displayName = computed(() => {
   const name = user.value?.user_metadata?.full_name || user.value?.user_metadata?.name;
   return typeof name === 'string' && name.trim() ? name.trim().split(/\s+/)[0] : user.value?.email?.split('@')[0] || 'estudante';
@@ -54,7 +54,7 @@ const recommendation = computed(() => {
   const practiced = topics.value.filter(t => topicState(t.id).answered > 0 && !topicState(t.id).unlocked);
   return practiced.sort((a, b) => topicState(a.id).rate - topicState(b.id).rate)[0] || topics.value.find(t => !topicState(t.id).unlocked) || topics.value[0];
 });
-function navigate(to) { if (!user.value) to = 'login'; route.value = to; window.history.replaceState({}, '', to === 'login' ? '/login' : to === 'profile' ? '/perfil' : '/'); mobileMenu.value = false; error.value = ''; notice.value = ''; window.scrollTo({ top: 0, behavior: 'smooth' }); }
+function navigate(to) { if (!user.value) to = 'login'; route.value = to; window.history.replaceState({}, '', pagePaths[to] || '/'); mobileMenu.value = false; error.value = ''; notice.value = ''; window.scrollTo({ top: 0, behavior: 'smooth' }); }
 function recordExamAttempt(a) { if (!attempts.value.some(old => old.request_id === a.request_id)) attempts.value.push(a); }
 function subjectStats(id) {
   const a = attempts.value.filter(a => a.subject_id === id);
@@ -95,7 +95,7 @@ onMounted(async () => {
         user.value = session?.user && !session.user.is_anonymous ? session.user : null;
         if (previousId !== user.value?.id) {
           sessionScope.invalidate();
-          attempts.value = []; questionItems.value = []; result.value = null; inventory.value = null;
+          attempts.value = []; questionItems.value = []; result.value = null; inventory.value = null; examReviewTarget.value = null;
           selectedOption.value = null; sessionAnswers.value = 0; authPassword.value = ''; authEmail.value = '';
           dailyGoal.value = 20; lessonRead.value = false; savingGoal.value = false;
           busy.value = false; loadingQuestions.value = false; authBusy.value = false; googleBusy.value = false;
@@ -116,7 +116,7 @@ onMounted(async () => {
       }
     }
     const initialAuthError = error.value || loginError;
-    navigate(user.value ? (window.location.pathname === '/perfil' ? 'profile' : 'dashboard') : 'login');
+    navigate(user.value ? (window.location.pathname === pagePaths.exams ? 'exams' : window.location.pathname === pagePaths.profile ? 'profile' : 'dashboard') : 'login');
     if (initialAuthError) error.value = initialAuthError;
     if (user.value) {
       if (config.value.apiAvailable === false) error.value = 'Sua conta está conectada, mas a área de estudos está temporariamente indisponível. Tente recarregar em instantes.';
@@ -127,7 +127,7 @@ onMounted(async () => {
 });
 onUnmounted(() => { authSubscription?.unsubscribe(); sessionScope.invalidate(); window.removeEventListener('auth-required', expireSession); });
 function expireSession() {
-  sessionScope.invalidate(); user.value = null; attempts.value = []; questionItems.value = []; result.value = null; inventory.value = null;
+  sessionScope.invalidate(); user.value = null; attempts.value = []; questionItems.value = []; result.value = null; inventory.value = null; examReviewTarget.value = null;
   accountLoading.value = false; navigate('login'); error.value = 'Sua sessão expirou. Entre novamente.';
   supabase?.auth.signOut({ scope: 'local' });
 }
@@ -166,15 +166,14 @@ async function loadUnansweredPage(topicId, kind, initialOffset = 0) {
     nextOffset += data.questions.length;
   }
 }
-async function startPractice(kind = 'basic') {
-  if (kind === 'official' && !unlocked.value) { error.value = 'Pratique 5 questões básicas distintas deste assunto e alcance pelo menos 70% de acerto.'; return; }
+async function startPractice() {
   const scope = sessionScope.capture();
   loadingQuestions.value = true; error.value = ''; reviewSession.value = false;
   try {
-    const data = await loadUnansweredPage(selectedTopic.value, kind);
+    const data = await loadUnansweredPage(selectedTopic.value, 'basic');
     if (!sessionScope.isCurrent(scope)) return;
     questionItems.value = data.questions; questionTotal.value = data.total; questionIndex.value = data.index; offset.value = data.offset;
-    selectedKind.value = kind; sessionAnswers.value = 0; resetQuestion(); navigate('study');
+    selectedKind.value = 'basic'; sessionAnswers.value = 0; resetQuestion(); navigate('study');
   } catch (e) { if (sessionScope.isCurrent(scope)) error.value = e.message; }
   finally { if (sessionScope.isCurrent(scope)) loadingQuestions.value = false; }
 }
@@ -215,7 +214,7 @@ async function reviewAttempt(a) {
   try {
     const data = await api(`/questions/${a.question_id}`);
     if (!sessionScope.isCurrent(scope)) return;
-    if(data.exam_id) { examReviewTarget.value={examId:data.exam_id,questionId:data.id}; navigate('library'); return; }
+    if(data.exam_id) { examReviewTarget.value={examId:data.exam_id,questionId:data.id}; navigate('exams'); return; }
     selectedTopic.value = a.topic_id; selectedSubject.value = a.subject_id; selectedKind.value = a.kind;
     questionItems.value = [data]; questionTotal.value = 1; questionIndex.value = 0; offset.value = 0; sessionAnswers.value = 0; reviewSession.value = true;
     resetQuestion(); navigate('study');
@@ -250,7 +249,7 @@ function reloadApp() { window.location.reload(); }
       <a class="brand" href="#" @click.prevent="navigate('dashboard')"><span class="brand-icon"><GraduationCap :size="24" /></span><span>aprovados<span class="brand-dot">.</span><small>UM PASSO DE CADA VEZ</small></span></a>
       <div class="workspace-label">SUA JORNADA</div>
       <nav aria-label="Menu principal">
-        <button v-for="item in [{ id: 'dashboard', label: 'Visão geral', icon: LayoutDashboard }, { id: 'boards', label: 'Bancas e matérias', icon: BookOpen }, { id: 'questions', label: 'Banco de questões', icon: ListChecks }, { id: 'review', label: 'Caderno de erros', icon: RotateCcw }, { id: 'library', label: 'Acervo e fontes', icon: Library }]" :key="item.id" :class="{ active: route === item.id || route === 'study' && item.id === 'boards' }" @click="navigate(item.id)"><component :is="item.icon" :size="19"/><span>{{ item.label }}</span><span v-if="item.id === 'review' && wrongAttempts.length" class="nav-count">{{ wrongAttempts.length }}</span></button>
+        <button v-for="item in [{ id: 'dashboard', label: 'Visão geral', icon: LayoutDashboard }, { id: 'boards', label: 'Bancas e matérias', icon: BookOpen }, { id: 'questions', label: 'Banco de questões', icon: ListChecks }, { id: 'exams', label: 'Provas e gabaritos', icon: Files }, { id: 'review', label: 'Caderno de erros', icon: RotateCcw }, { id: 'library', label: 'Acervo e fontes', icon: Library }]" :key="item.id" :class="{ active: route === item.id || route === 'study' && item.id === 'boards' }" @click="navigate(item.id)"><component :is="item.icon" :size="19"/><span>{{ item.label }}</span><span v-if="item.id === 'review' && wrongAttempts.length" class="nav-count">{{ wrongAttempts.length }}</span></button>
       </nav>
       <div class="sidebar-plan"><span class="tiny-label">SUA BANCA</span><div><span class="board-emblem">V</span><span>Vunesp<small>Preparação do básico à prova</small></span><CheckCircle2 :size="16" /></div></div>
       <div class="sidebar-bottom"><div class="sidebar-note"><span class="note-spark">✦</span><p>O que você aprende hoje<br>abre caminhos amanhã.</p></div><button class="settings-nav" :class="{ active: route === 'settings' }" @click="navigate('settings')"><Settings2 :size="18"/>Minha preparação</button><button class="settings-nav" :class="{ active: route === 'profile' }" @click="navigate('profile')"><GraduationCap :size="18"/>Meu perfil</button><div class="profile"><span class="avatar">{{ user ? displayName.slice(0,2).toUpperCase() : 'EU' }}</span><span>{{ user ? displayName : 'Meu espaço de estudo' }}<small>Conta do estudante</small></span><button v-if="user" class="icon-button" aria-label="Sair da conta" @click="logout"><LogOut :size="17"/></button></div></div>
@@ -290,22 +289,26 @@ function reloadApp() { window.location.reload(); }
             <section class="board-banner"><span class="large-board-emblem">V</span><div><div class="eyebrow">BANCA ATIVA</div><h2>Vunesp</h2><p>Fundação para o Vestibular da Unesp</p></div><span class="subtle-pill"><CheckCircle2 :size="14"/>Trilhas disponíveis</span><span class="muted small future-boards">Novas bancas, em breve</span></section>
             <div class="subject-tabs" role="group" aria-label="Matéria"><button v-for="subject in subjects" :key="subject.id" :class="{ active: selectedSubject === subject.id }" @click="selectSubject(subject.id)"><component :is="iconMap[subject.icon]" :size="18"/>{{ subject.short }} <small>({{ number(subjectCount(subject.id)) }})</small></button></div>
             <div class="learning-layout"><section class="panel topic-list"><div class="panel-heading"><div><h2>{{ currentSubject?.name }}</h2><p>{{ subjectTopics.length }} assuntos · {{ number(subjectCount(selectedSubject)) }} questões disponíveis</p></div></div><button v-for="(t, i) in subjectTopics" :key="t.id" class="topic-item" :class="{ selected: selectedTopic === t.id }" @click="selectedTopic = t.id; lessonOpen = true; lessonRead = false"><span class="topic-number" :class="{ completed: topicState(t.id).unlocked }"><Check v-if="topicState(t.id).unlocked" :size="18"/><template v-else>{{ String(i + 1).padStart(2, '0') }}</template></span><span><strong>{{ t.name }}</strong><small>{{ number(topicCounts[t.id] || 0) }} questões · {{ number(remainingInTopic(t.id)) }} inéditas</small><small>{{ topicState(t.id).answered ? `${topicState(t.id).answered} questões distintas · ${topicState(t.id).rate}% de acerto` : 'Conceito + exemplos + prática' }}</small></span><ChevronRight :size="16"/></button></section>
-              <section class="panel lesson-panel" v-if="topic"><div class="lesson-step"><span class="step-badge">01</span><span>ENTENDA O CONCEITO</span><span class="reading-time">Leitura rápida</span></div><h2>{{ topic.name }}</h2><p class="lesson-concept">{{ topic.concept }}</p><div class="example-box"><span class="tiny-label">NA PRÁTICA</span><p>{{ topic.example }}</p></div><div class="tip-box"><span>✦</span><p>{{ topic.tip }}</p></div><div class="lesson-divider"></div><div class="lesson-step"><span class="step-badge">02</span><span>CONSTRUA SUA BASE</span></div><p class="muted">Responda pelo menos 5 questões distintas e alcance 70% de acerto para liberar a etapa oficial deste assunto. Repetições não aumentam a contagem de questões distintas.</p><label class="read-check"><input v-model="lessonRead" type="checkbox">Li o conceito e estou pronto para praticar.</label><button class="button primary" :disabled="!lessonRead || loadingQuestions" @click="startPractice('basic')">{{ loadingQuestions ? 'Preparando…' : remainingInTopic(topic.id) ? 'Continuar de onde parei' : 'Revisar conteúdo' }}<ArrowRight :size="17"/></button><div class="official-step"><span class="metric-icon" :class="unlocked ? 'sage' : 'neutral'"><CheckCircle2 v-if="unlocked" :size="20"/><LockKeyhole v-else :size="20"/></span><div><h3>03 · Questões oficiais Vunesp</h3><p>{{ unlocked ? 'Base consolidada! Consulte o acervo oficial disponível.' : `${topicState(topic.id).answered}/5 questões distintas · ${topicState(topic.id).rate}% de acerto` }}</p></div><button class="text-button" :disabled="!unlocked || loadingQuestions" @click="startPractice('official')">{{ unlocked ? 'Acessar' : 'Bloqueado' }}<ArrowRight v-if="unlocked" :size="15"/></button></div></section>
+              <section class="panel lesson-panel" v-if="topic"><div class="lesson-step"><span class="step-badge">01</span><span>ENTENDA O CONCEITO</span><span class="reading-time">Leitura rápida</span></div><h2>{{ topic.name }}</h2><p class="lesson-concept">{{ topic.concept }}</p><div class="example-box"><span class="tiny-label">NA PRÁTICA</span><p>{{ topic.example }}</p></div><div class="tip-box"><span>✦</span><p>{{ topic.tip }}</p></div><div class="lesson-divider"></div><div class="lesson-step"><span class="step-badge">02</span><span>CONSTRUA SUA BASE</span></div><p class="muted">Responda pelo menos 5 questões distintas e alcance 70% de acerto para consolidar a base deste assunto. Repetições não aumentam a contagem de questões distintas.</p><label class="read-check"><input v-model="lessonRead" type="checkbox">Li o conceito e estou pronto para praticar.</label><button class="button primary" :disabled="!lessonRead || loadingQuestions" @click="startPractice()">{{ loadingQuestions ? 'Preparando…' : remainingInTopic(topic.id) ? 'Continuar de onde parei' : 'Revisar conteúdo' }}<ArrowRight :size="17"/></button><div class="official-step">
+                  <span class="metric-icon sage"><Files :size="20"/></span>
+                  <div><h3>03 · Questões oficiais Vunesp</h3><p>Escolha um caderno para praticar ou baixar a prova e o gabarito.</p></div>
+                  <button class="text-button" @click="navigate('exams')">Acessar provas<ArrowRight :size="15"/></button>
+                </div></section>
             </div>
           </template>
 
           <template v-if="route === 'questions'">
-            <ExamPractice :attempts="attempts" @attempt="recordExamAttempt"/>
             <div class="page-heading"><div><div class="eyebrow">PRÁTICA COM PROPÓSITO</div><h1>Uma questão de cada vez<span class="green-dot">.</span></h1><p>{{ number(inventory?.basic) }} exercícios básicos. Filtre por matéria e escolha o assunto.</p></div></div>
+            <button class="button secondary" @click="navigate('exams')"><Files :size="17"/>Questões oficiais Vunesp<ArrowRight :size="16"/></button>
             <div class="inventory-banner"><Library :size="21"/><p><strong>Acervo transparente:</strong> {{ number(inventory?.generated) }} exercícios parametrizados, {{ number(inventory?.curated) }} questões autorais adicionais e {{ inventory?.official }} oficiais verificadas.</p></div>
             <section class="panel filters"><label>Matéria<select :value="selectedSubject" @change="selectSubject($event.target.value)"><option v-for="s in subjects" :key="s.id" :value="s.id">{{ s.name }}</option></select></label><label>Buscar assunto<div class="search-input"><Search :size="17"/><input v-model="query" placeholder="Ex.: regência verbal"></div></label></section>
-            <div class="question-topic-grid"><section v-for="t in filteredTopics" :key="t.id" class="panel question-topic"><div class="topic-card-heading"><span class="metric-icon sage"><BookOpen :size="19"/></span><span class="subtle-pill">{{ topicState(t.id).unlocked ? 'Etapa oficial liberada' : 'Fundamentos' }}</span></div><h2>{{ t.name }}</h2><p><strong>{{ number(topicCounts[t.id] || 0) }} questões · {{ number(remainingInTopic(t.id)) }} inéditas</strong></p><p>{{ t.concept }}</p><button class="text-button" @click="openTopic(t.id)">Estudar e praticar<ArrowRight :size="16"/></button></section></div><div v-if="!filteredTopics.length" class="empty-state"><Search :size="32"/><h2>Nenhum assunto encontrado</h2><p>Tente outro termo ou escolha outra matéria.</p></div>
+            <div class="question-topic-grid"><section v-for="t in filteredTopics" :key="t.id" class="panel question-topic"><div class="topic-card-heading"><span class="metric-icon sage"><BookOpen :size="19"/></span><span class="subtle-pill">{{ topicState(t.id).unlocked ? 'Base consolidada' : 'Fundamentos' }}</span></div><h2>{{ t.name }}</h2><p><strong>{{ number(topicCounts[t.id] || 0) }} questões · {{ number(remainingInTopic(t.id)) }} inéditas</strong></p><p>{{ t.concept }}</p><button class="text-button" @click="openTopic(t.id)">Estudar e praticar<ArrowRight :size="16"/></button></section></div><div v-if="!filteredTopics.length" class="empty-state"><Search :size="32"/><h2>Nenhum assunto encontrado</h2><p>Tente outro termo ou escolha outra matéria.</p></div>
           </template>
 
           <template v-if="route === 'study'">
             <button class="text-button back-button" @click="navigate('boards')"><ArrowLeft :size="16"/>Voltar às matérias</button>
             <div class="page-heading"><div><div class="eyebrow">{{ reviewSession ? 'REVISAR TAMBÉM É AVANÇAR' : selectedKind === 'basic' ? 'CONSTRUINDO SUA BASE' : 'PREPARAÇÃO PARA A PROVA' }}</div><h1>{{ topic?.name }}</h1><p>{{ currentSubject?.name }}<span class="middle-dot">·</span>{{ selectedKind === 'basic' ? 'Prática básica autoral' : 'Questões oficiais Vunesp' }}</p></div><span v-if="currentQuestion" class="subtle-pill">Questão {{ offset + questionIndex + 1 }} de {{ number(questionTotal) }} · {{ number(remainingInTopic(selectedTopic)) }} inéditas</span></div>
-            <section v-if="!currentQuestion" class="panel empty-state official-empty"><span class="metric-icon sand"><Library :size="27"/></span><h2>{{ selectedKind === 'official' ? 'Seu próximo nível está preparado' : 'Todas as questões concluídas' }}</h2><p v-if="selectedKind === 'official'">Ainda não há questões oficiais importadas para este assunto. Elas só aparecem após conferência com a prova aplicada e o gabarito definitivo.</p><p v-else>Você já respondeu todas as questões disponíveis neste assunto ou o banco ainda não foi populado.</p><div class="empty-actions"><button class="button primary" @click="startPractice('basic')">Continuar no básico<ArrowRight :size="17"/></button><button class="button secondary" @click="navigate('library')">Consultar fontes</button></div></section>
+            <section v-if="!currentQuestion" class="panel empty-state official-empty"><span class="metric-icon sand"><Library :size="27"/></span><h2>{{ selectedKind === 'official' ? 'Provas oficiais da Vunesp' : 'Todas as questões concluídas' }}</h2><p v-if="selectedKind === 'official'">Escolha a aplicação e o caderno para praticar questões oficiais.</p><p v-else>Você já respondeu todas as questões disponíveis neste assunto ou o banco ainda não foi populado.</p><div class="empty-actions"><button class="button primary" @click="startPractice()">Continuar no básico<ArrowRight :size="17"/></button><button class="button secondary" @click="navigate('exams')">Ver provas e gabaritos</button></div></section>
             <div v-else class="study-layout"><section class="panel question-panel"><div class="question-meta"><span class="tag" :class="selectedKind">{{ selectedKind === 'basic' ? 'BÁSICA' : 'OFICIAL' }}</span><span>{{ currentQuestion.origin }}</span></div><div v-if="currentQuestion.source" class="official-source">{{ currentQuestion.source.exam }} · {{ currentQuestion.source.role }} · {{ currentQuestion.source.year }} · Caderno {{ currentQuestion.source.booklet }} · Questão {{ currentQuestion.source.number }}</div><h2 class="question-prompt">{{ currentQuestion.prompt }}</h2><div class="answer-options" role="radiogroup" aria-label="Alternativas"><button v-for="(option, i) in currentQuestion.options" :key="i" role="radio" :aria-checked="selectedOption === i" :disabled="!!result || busy" class="answer-option" :class="{ chosen: selectedOption === i, 'is-correct': result && result.correct_index === i, 'is-wrong': result && selectedOption === i && !result.correct }" @click="selectedOption = i"><span class="answer-letter">{{ String.fromCharCode(65 + i) }}</span><span>{{ option }}</span><Check v-if="result && result.correct_index === i" :size="19"/><X v-else-if="result && selectedOption === i && !result.correct" :size="19"/></button></div><div v-if="result" class="answer-feedback" :class="{ incorrect: !result.correct }" role="status"><div><CheckCircle2 v-if="result.correct" :size="23"/><CircleHelp v-else :size="23"/><h3>{{ result.correct ? 'Muito bem! Mais um conceito consolidado.' : 'Tudo bem errar. Agora, entenda o porquê.' }}</h3></div><p>{{ result.explanation }}</p><a v-if="currentQuestion.source" :href="currentQuestion.source.answer_key_url" target="_blank" rel="noopener noreferrer" class="text-button">Conferir gabarito definitivo<ExternalLink :size="14"/></a></div><div class="question-actions"><span class="muted small">{{ result ? 'Seu desempenho já foi atualizado.' : 'Leia com calma. Você está aprendendo.' }}</span><button v-if="!result" class="button primary" :disabled="selectedOption === null || busy" @click="answer">{{ busy ? 'Corrigindo…' : 'Confirmar resposta' }}<Check :size="17"/></button><button v-else class="button primary" :disabled="loadingQuestions" @click="nextQuestion">{{ reviewSession ? 'Concluir revisão' : 'Próxima questão inédita' }}<ArrowRight :size="17"/></button></div></section><aside class="panel study-guide"><div class="eyebrow">SEU APOIO</div><h3>Lembre-se do conceito</h3><p>{{ topic?.concept }}</p><div class="lesson-divider"></div><span class="tiny-label">DICA PARA RESOLVER</span><p>{{ topic?.tip }}</p><div class="session-count"><strong>{{ sessionAnswers }}</strong><span>questões respondidas<br>nesta sessão</span></div></aside></div>
           </template>
 
@@ -315,9 +318,14 @@ function reloadApp() { window.location.reload(); }
             <div v-else class="panel review-list"><div v-for="a in wrongAttempts" :key="a.question_id" class="review-row"><span class="metric-icon sand"><RotateCcw :size="19"/></span><div><h3>{{ topics.find(t => t.id === a.topic_id)?.name || a.topic_id }}</h3><p>{{ a.kind === 'basic' ? 'Questão básica' : 'Questão oficial' }} · {{ formatDate(a.created_at) }} · alternativa {{ String.fromCharCode(65 + a.selected_index) }}</p></div><button class="button secondary small-button" :disabled="loadingQuestions" @click="reviewAttempt(a)">Tentar novamente<ArrowRight :size="15"/></button></div></div>
           </template>
 
+          <template v-if="route === 'exams'">
+            <div class="page-heading"><div><h1>Provas e gabaritos</h1><p>Pratique por edição ou baixe os PDFs de cada caderno.</p></div></div>
+            <ExamPractice :attempts="attempts" :target="examReviewTarget" @opened="examReviewTarget = null" @attempt="recordExamAttempt"/>
+          </template>
+
           <template v-if="route === 'library'">
-            <ExamPractice :attempts="attempts" :target="examReviewTarget" @opened="examReviewTarget=null" @attempt="recordExamAttempt"/>
             <div class="page-heading"><div><div class="eyebrow">ORIGEM IMPORTA</div><h1>Um acervo em que você pode confiar<span class="green-dot">.</span></h1><p>Conteúdo autoral e questões oficiais têm origens e etapas de revisão diferentes.</p></div></div>
+            <button class="button secondary" @click="navigate('exams')"><Files :size="17"/>Ver provas e gabaritos<ArrowRight :size="16"/></button>
             <div class="library-summary"><div class="panel"><span class="metric-icon sage"><Calculator :size="22"/></span><strong>{{ number(inventory?.generated) }}</strong><h3>Exercícios parametrizados</h3><p>Variações de 8 modelos de matemática e lógica, com gabaritos calculados. Não são 10 mil conceitos diferentes nem questões da Vunesp.</p></div><div class="panel"><span class="metric-icon blue"><BookOpen :size="22"/></span><strong>{{ inventory?.curated || 0 }}</strong><h3>Questões introdutórias</h3><p>Português, informática e proposições. Conteúdo autoral de curadoria inicial, sujeito à revisão pedagógica.</p></div><div class="panel"><span class="metric-icon sand"><GraduationCap :size="23"/></span><strong>{{ inventory?.official || 0 }}</strong><h3>Oficiais verificadas</h3><p>Somente provas aplicadas, com identificação do caderno, da questão, da aplicação e do gabarito definitivo.</p></div></div>
             <section class="panel sources-panel"><div class="panel-heading"><div><h2>Fontes oficiais para consulta</h2><p>A página do concurso é uma referência de origem; não significa que suas questões já foram importadas.</p></div></div><a v-for="source in catalog.officialSources" :key="source.url" :href="source.url" target="_blank" rel="noopener noreferrer" class="source-row"><span class="large-board-emblem">V</span><div><h3>{{ source.title }}</h3><p>{{ source.note }}</p><small>{{ source.url }}</small></div><ExternalLink :size="20"/></a></section>
             <section class="panel editorial-panel"><h2>Como uma questão oficial chega à sua trilha</h2><div class="editorial-steps"><div><span>01</span><h3>Prova aplicada</h3><p>Documento original e identificação da aplicação e do caderno.</p></div><div><span>02</span><h3>Conferência</h3><p>Texto, alternativas, imagens, gabarito definitivo e eventuais anulações.</p></div><div><span>03</span><h3>Classificação</h3><p>Matéria, assunto, explicação e registro de revisão e de uso.</p></div></div><p class="muted small">A estrutura aceita novas bancas. Nesta versão, apenas a Vunesp está ativa. A disponibilidade de matérias não substitui a conferência do edital do seu concurso.</p></section>
