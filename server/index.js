@@ -8,7 +8,7 @@ import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { boards, subjects, topics, officialSources } from '../shared/catalog.js';
 import { getDatabaseConfig, validateDatabaseConfig } from './config.js';
-import { loadMixedPractice, regencyInventory } from './practice.js';
+import { groupedPracticeInventory, groupedPracticeTopics, loadMixedPractice } from './practice.js';
 import { presentPortugueseQuestion } from './portuguese-prompts.js';
 
 export const app = express();
@@ -83,10 +83,12 @@ app.get('/api/question-counts', async (req, res, next) => {
   try {
     // Counts use the authenticated student's RLS context and reflect only published questions.
     const counts = {};
-    const regency = await regencyInventory(req.db);
+    const aliases = {};
     for (const topic of topics) {
-      if (topic.id === 'regencia') {
-        counts[topic.id] = regency.total;
+      if (groupedPracticeTopics.has(topic.id)) {
+        const inventory = await groupedPracticeInventory(req.db, topic.id);
+        counts[topic.id] = inventory.total;
+        aliases[topic.id] = inventory.aliases;
         continue;
       }
       const { count, error } = await req.db.from('questions')
@@ -96,7 +98,7 @@ app.get('/api/question-counts', async (req, res, next) => {
       if (error) throw error;
       counts[topic.id] = count || 0;
     }
-    res.json({ topics: counts, regencyAliases: regency.aliases });
+    res.json({ topics: counts, aliases });
   } catch (error) { next(error); }
 });
 app.get('/api/preferences', async (req, res, next) => {

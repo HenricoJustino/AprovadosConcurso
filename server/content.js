@@ -3,6 +3,7 @@ import { topics } from '../shared/catalog.js';
 import { portugueseVariants } from './portuguese-variants.js';
 import { presentPortugueseQuestion } from './portuguese-prompts.js';
 import { regencyQuestions } from './regency-questions.js';
+import { craseQuestions } from './crase-questions.js';
 
 const makeId = value => createHash('sha256').update(value).digest('hex').slice(0, 32);
 function question(topicId, prompt, options, correct, explanation, extra = {}) {
@@ -77,7 +78,11 @@ function numeric(topicId, prompt, answer, explanation, i) {
     { origin: 'Autoral · exercício parametrizado', editorial_status: 'generated', generator_version: '1' });
 }
 export function generateQuestions() {
-  const all = [...curated, ...regencyQuestions.map(args => question('regencia', ...args))];
+  const all = [
+    ...curated,
+    ...regencyQuestions.map(args => question('regencia', ...args)),
+    ...craseQuestions.map(args => question('crase', ...args))
+  ];
   for (let i = 0; i < 1250; i++) {
     const a = 11 + i % 50, b = 2 + Math.floor(i / 50);
     all.push(numeric('operacoes', `Uma biblioteca tinha ${a} livros e recebeu mais ${b}. Quantos livros passou a ter?`, a + b, `Some o acervo inicial aos livros recebidos: ${a} + ${b} = ${a + b} livros.`, i));

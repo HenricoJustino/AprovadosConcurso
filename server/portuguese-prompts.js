@@ -7,7 +7,7 @@ const instructions = [
   'Assinale a alternativa que indica a ida ao setor de atendimento e emprega corretamente o acento grave.',
   'Para registrar a presença no encontro, assinale a alternativa que emprega corretamente o acento grave.',
   'Ao descrever o retorno ao local de consulta, qual alternativa emprega corretamente o acento grave?',
-  'Para registrar a entrega do documento à responsável, assinale a alternativa em que o acento grave está empregado corretamente.',
+  'Para registrar a entrega do formulário, assinale a alternativa em que o acento grave está empregado corretamente.',
   'Assinale a alternativa que expressa corretamente, quanto ao emprego do acento grave, a menção ao que foi decidido.',
   'Assinale a alternativa em que o verbo concorda com o núcleo do sujeito.',
   'Qual alternativa emprega corretamente o verbo “haver” com sentido de “existir”?',
@@ -37,7 +37,7 @@ export function presentPortugueseQuestion(question) {
   const model = Number(marker?.[1]);
   const instruction = instructions[model - 1];
   if (!instruction) return question;
-  if (model <= 5) return { ...question, prompt: instruction };
+  if (model <= 10) return { ...question, prompt: instruction };
 
   if (model >= 26) {
     const passage = question.prompt.match(/^Leia o trecho: [“"]([^”"]+)[”"]/u)?.[1];
@@ -47,22 +47,18 @@ export function presentPortugueseQuestion(question) {
   }
 
   // Recover only neutral context from the original record.
-  const context = question.prompt.match(
-    /^(?:Ao redigir um registro |Em um exercício de revisão realizado por )([^,]+), ([^,]+), ([^,]+), /u
-  );
+  const context = question.prompt.match(/^Em um exercício de revisão realizado por ([^,]+), ([^,]+), ([^,]+), /u);
   if (!context) return question;
   const [, name, place, time] = context;
   const when = time.replace('após a reunião', 'depois do almoço');
   const where = place[0].toUpperCase() + place.slice(1);
-  const setting = model <= 10
-    ? `${name} preparou um registro ${place} ${when}.`
-    : model <= 20
-      ? `${where}, ${name} revisou um texto ${when}.`
-      : `${name} trabalhou na revisão de um texto ${place} ${when}.`;
+  const setting = model <= 20
+    ? `${where}, ${name} revisou um texto ${when}.`
+    : `${name} trabalhou na revisão de um texto ${place} ${when}.`;
   return { ...question, prompt: `${setting} ${instruction}` };
 }
 
-export function regencyPracticeIdentity(question) {
-  const model = question.generator_version === 'pt-1' && question.prompt.match(/\(Situação ([1-5])\.\)$/u);
-  return model ? `regency-model-${model[1]}` : question.id;
+export function directPracticeIdentity(question) {
+  const model = question.generator_version === 'pt-1' && question.prompt.match(/\(Situação ([1-9]|10)\.\)$/u);
+  return model ? `portuguese-model-${model[1]}` : question.id;
 }

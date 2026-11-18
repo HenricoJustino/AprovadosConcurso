@@ -1,7 +1,8 @@
-import { regencyPracticeIdentity } from './portuguese-prompts.js';
+import { directPracticeIdentity } from './portuguese-prompts.js';
 
 const SCAN_SIZE = 1000;
 const PRACTICE_SIZE = 20;
+export const groupedPracticeTopics = new Set(['regencia', 'crase']);
 
 function questionPattern(question) {
   if (question.generator_version === 'pt-1') {
@@ -68,20 +69,20 @@ function practiceQuestions(db, topic, subject) {
 
 const practiceFields = 'id,prompt,generator_version';
 
-function groupRegency(candidates) {
+function groupEquivalentQuestions(candidates) {
   const representatives = new Map();
   const aliases = new Map();
   for (const question of candidates) {
-    const key = regencyPracticeIdentity(question);
+    const key = directPracticeIdentity(question);
     if (!representatives.has(key)) representatives.set(key, question);
     if (key !== question.id) aliases.set(question.id, representatives.get(key).id);
   }
   return { candidates: [...representatives.values()], aliases };
 }
 
-export async function regencyInventory(db) {
-  const query = practiceQuestions(db, 'regencia');
-  const groups = groupRegency(await readRows(() => query(practiceFields)));
+export async function groupedPracticeInventory(db, topic) {
+  const query = practiceQuestions(db, topic);
+  const groups = groupEquivalentQuestions(await readRows(() => query(practiceFields)));
   return { total: groups.candidates.length, aliases: Object.fromEntries(groups.aliases) };
 }
 
@@ -92,7 +93,7 @@ export async function loadMixedPractice(db, userId, { topic, subject }) {
     readRows(() => db.from('attempts').select('id,question_id,created_at')
       .eq('user_id', userId).eq('topic_id', topic).eq('kind', 'basic'))
   ]);
-  const groups = topic === 'regencia' ? groupRegency(candidates) : null;
+  const groups = groupedPracticeTopics.has(topic) ? groupEquivalentQuestions(candidates) : null;
   const pool = groups?.candidates ?? candidates;
   const history = groups ? attempts.map(attempt => ({
     ...attempt, question_id: groups.aliases.get(attempt.question_id) ?? attempt.question_id

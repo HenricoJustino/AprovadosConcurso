@@ -4,12 +4,12 @@ import { generateQuestions, questions, publicQuestion } from '../server/content.
 import { topics } from '../shared/catalog.js';
 
 test('acervo contém 10 mil variações e questões introdutórias, sem enunciados duplicados', () => {
-  assert.equal(questions.length, 17573);
+  assert.equal(questions.length, 17601);
   assert.equal(questions.filter(q => q.editorial_status === 'generated').length, 10000);
   assert.equal(new Set(questions.map(q => q.id)).size, questions.length);
   assert.equal(new Set(questions.map(q => q.prompt)).size, questions.length);
   assert.ok(questions.every(q => q.kind === 'basic'));
-  assert.equal(questions.filter(q => q.subject_id === 'portugues').length, 7553);
+  assert.equal(questions.filter(q => q.subject_id === 'portugues').length, 7581);
   assert.deepEqual(generateQuestions().map(q => q.id), questions.map(q => q.id));
 });
 test('todas as questões possuem alternativas válidas, explicação e vínculo com a matéria', () => {
@@ -58,8 +58,8 @@ test('os 7.500 enunciados parametrizados de Português ocultam a resposta e o n�
     assert.ok(!normalize(revised.prompt).includes(normalize(original.options[original.correct_index])), revised.prompt);
     prompts.add(revised.prompt);
   }
-  // Regência tem cinco enunciados diretos para os cinco conjuntos equivalentes.
-  assert.equal(prompts.size, variants.length - 1250 + 5);
+  // Regência e crase têm cinco enunciados diretos por assunto.
+  assert.equal(prompts.size, variants.length - 2500 + 10);
   assert.equal(publicQuestion(variants[2]).prompt, 'Considerando o sentido de “presenciar”, assinale o emprego adequado do verbo “assistir” na norma-padrão.');
   assert.equal(publicQuestion(variants[61]).prompt.includes('obedecer'), true);
 });

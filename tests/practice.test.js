@@ -52,13 +52,13 @@ test('a jornada intercala modelos e pula o histórico entre lotes e sessões', a
     assert.equal(first.questions.length, 20);
     assert.ok(first.questions.every(q => !/\(Situação \d+\.\)/u.test(q.prompt)));
     const rawTotal = questions.filter(q => q.topic_id === topic).length;
-    assert.equal(first.total, topic === 'regencia' ? rawTotal - 1245 : rawTotal);
+    assert.equal(first.total, rawTotal - 1245);
     assert.ok(seenTopics.has(topic), 'inclui questões além do limite inicial do banco');
     const firstFive = first.questions.slice(0, 5).map(family);
     assert.equal(new Set(firstFive).size, 5);
     first.questions.forEach((q, i) => {
       // A tentativa antiga pode apontar para qualquer variante da mesma questão.
-      const alias = topic === 'regencia' && questions.find(row =>
+      const alias = questions.find(row =>
         row.topic_id === topic && row.id !== q.id && family(row) === family(q));
       history.push({
         id: String(history.length), question_id: alias ? alias.id : q.id, topic_id: topic,
@@ -70,7 +70,7 @@ test('a jornada intercala modelos e pula o histórico entre lotes e sessões', a
     assert.equal(second.total, first.total);
     const ids = [...first.questions, ...second.questions].map(q => q.id);
     assert.equal(new Set(ids).size, Math.min(40, first.total));
-    if (topic === 'regencia') assert.equal(new Set([...first.questions, ...second.questions].map(q => q.prompt)).size, first.total);
+    assert.equal(new Set([...first.questions, ...second.questions].map(q => q.prompt)).size, first.total);
     const models = [first.questions.at(-1), ...second.questions].map(family);
     assert.ok(models.every((model, i) => i === 0 || models[i - 1] !== model));
     const resumed = await (await request(app, endpoint, asStudent)).json();
