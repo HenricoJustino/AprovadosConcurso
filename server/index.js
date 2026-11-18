@@ -9,6 +9,7 @@ import { fileURLToPath } from 'node:url';
 import { boards, subjects, topics, officialSources } from '../shared/catalog.js';
 import { getDatabaseConfig, validateDatabaseConfig } from './config.js';
 import { loadMixedPractice } from './practice.js';
+import { presentPortugueseQuestion } from './portuguese-prompts.js';
 
 export const app = express();
 const databaseConfig = getDatabaseConfig();
@@ -115,14 +116,15 @@ app.get('/api/questions', async (req, res, next) => {
     const filter = filterSchema.parse(req.query);
     if (filter.order === 'mixed') {
       if (filter.kind !== 'basic' || !filter.topic) return res.status(400).json({ error: 'Escolha um assunto para praticar.' });
-      return res.json(await loadMixedPractice(req.db, req.user.id, filter));
+      const page = await loadMixedPractice(req.db, req.user.id, filter);
+      return res.json({ ...page, questions: page.questions.map(presentPortugueseQuestion) });
     }
     let query = req.db.from('questions').select('*', { count: 'exact' }).eq('board_id', 'vunesp').eq('kind', filter.kind).eq('status', 'published').order('id').range(filter.offset, filter.offset + 19);
     if (filter.topic) query = query.eq('topic_id', filter.topic);
     if (filter.subject) query = query.eq('subject_id', filter.subject);
     const { data, error, count } = await query;
     if (error) throw error;
-    res.json({ questions: data, total: count });
+    res.json({ questions: data.map(presentPortugueseQuestion), total: count });
   } catch (error) { next(error); }
 });
 app.get('/api/questions/:id', async (req, res, next) => {
@@ -130,7 +132,7 @@ app.get('/api/questions/:id', async (req, res, next) => {
     const { data, error } = await req.db.from('questions').select('*').eq('id', req.params.id).eq('status', 'published').single();
     if (error?.code === 'PGRST116') return res.status(404).json({ error: 'Questão não disponível para revisão.' });
     if (error) throw error;
-    res.json(data);
+    res.json(presentPortugueseQuestion(data));
   } catch (error) { next(error); }
 });
 const answerSchema = z.object({ questionId: z.string().min(1).max(100), selectedIndex: z.number().int().min(0).max(4), elapsedSeconds: z.number().int().min(0).max(3600), requestId: z.uuid() });

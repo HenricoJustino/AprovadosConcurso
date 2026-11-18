@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { topics } from '../shared/catalog.js';
 import { portugueseVariants } from './portuguese-variants.js';
+import { presentPortugueseQuestion } from './portuguese-prompts.js';
 
 const makeId = value => createHash('sha256').update(value).digest('hex').slice(0, 32);
 function question(topicId, prompt, options, correct, explanation, extra = {}) {
@@ -101,5 +102,5 @@ export const questions = generateQuestions();
 export const questionMap = new Map(questions.map(q => [q.id, q]));
 export const publicQuestion = q => {
   const { correct_index, explanation, ...publicFields } = q;
-  return publicFields;
+  return presentPortugueseQuestion(publicFields);
 };

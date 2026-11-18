@@ -43,3 +43,21 @@ test('payload público não entrega gabarito nem explicação antes da resposta'
   assert.equal('explanation' in visible, false);
   assert.ok(visible.options.length);
 });
+
+test('os 7.500 enunciados parametrizados de Português ocultam a resposta e o número do modelo', () => {
+  const variants = questions.filter(q => q.generator_version === 'pt-1');
+  assert.equal(variants.length, 7500);
+  const normalize = text => text.normalize('NFC').toLocaleLowerCase('pt-BR');
+  const prompts = new Set();
+  for (const original of variants) {
+    const revised = publicQuestion(original);
+    assert.equal(revised.id, original.id);
+    assert.deepEqual(revised.options, original.options);
+    assert.notEqual(revised.prompt, original.prompt);
+    assert.doesNotMatch(revised.prompt, /\(Situação \d+\.\)|em referência a|relação sintática indicada/u);
+    assert.ok(!normalize(revised.prompt).includes(normalize(original.options[original.correct_index])), revised.prompt);
+    prompts.add(revised.prompt);
+  }
+  assert.equal(prompts.size, variants.length);
+  assert.equal(publicQuestion(variants[61]).prompt.includes('obedecer'), true);
+});

@@ -42,13 +42,15 @@ test('a jornada intercala modelos e pula o histórico entre lotes e sessões', a
       .slice(0, Number(params.get('limit'))).map(({ id, prompt, generator_version }) => ({ id, prompt, generator_version })));
   };
 
-  const family = q => q.prompt.match(/\(Situação (\d+)\.\)$/u)?.[1] ?? q.id;
+  const rawPrompts = new Map(questions.map(q => [q.id, q.prompt]));
+  const family = q => rawPrompts.get(q.id).match(/\(Situação (\d+)\.\)$/u)?.[1] ?? q.id;
   for (const topic of ['regencia', 'crase']) {
     const endpoint = '/api/questions?order=mixed&topic=' + topic;
     const response = await request(app, endpoint, asStudent);
     assert.equal(response.status, 200);
     const first = await response.json();
     assert.equal(first.questions.length, 20);
+    assert.ok(first.questions.every(q => !/\(Situação \d+\.\)/u.test(q.prompt)));
     assert.equal(first.total, questions.filter(q => q.topic_id === topic).length);
     assert.ok(seenTopics.has(topic), 'inclui questões além do limite inicial do banco');
     const firstFive = first.questions.slice(0, 5).map(family);
